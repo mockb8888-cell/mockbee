@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Company Questions - MockBee</title>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://api.fontshare.com/v2/css?f[]=satoshi@900,700,500,400&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        :root { --cream-bg: #FFFFFF; --gold: #D8C4B6; --navy: #1A1A1A; }
+        body { font-family: 'Satoshi', sans-serif; background: #F8F9FA; padding: 40px; color: var(--navy); }
+        .content-wrap { max-width: 900px; margin: 0 auto; }
+        .back-btn { 
+            display: inline-flex; 
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 25px; 
+            background: var(--navy);
+            color: var(--gold); 
+            text-decoration: none; 
+            font-weight: 800;
+            padding: 8px 18px;
+            border-radius: 50px;
+            font-size: 0.85rem;
+            transition: all 0.3s;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .back-btn:hover {
+            transform: translateX(-5px);
+            background: #000;
+            color: #fff;
+        }
+        .header-flex { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+        h1 { font-family: 'Playfair Display', serif; font-size: 2.2rem; }
+        .qa-card { background: #FFF; border-radius: 16px; padding: 30px; margin-bottom: 20px; border: 1.5px solid #EEE; box-shadow: 0 4px 15px rgba(0,0,0,0.02); }
+        .q-label { font-weight: 800; color: var(--gold-dark); text-transform: uppercase; font-size: 0.75rem; letter-spacing: 1px; margin-bottom: 10px; display: block; }
+        .question-text { font-size: 1.2rem; font-weight: 700; margin-bottom: 20px; color: #000; line-height: 1.4; }
+        .answer-box { background: #FAF9F8; padding: 20px; border-radius: 12px; border-left: 4px solid var(--gold); }
+        .a-label { font-weight: 700; color: var(--navy); font-size: 0.9rem; margin-bottom: 8px; display: block; text-transform: uppercase; }
+        .answer-text { font-size: 1rem; color: #444; line-height: 1.6; }
+        .btn-download { background: var(--navy); color: var(--gold); border: none; padding: 12px 24px; border-radius: 50px; font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 10px; }
+    </style>
+</head>
+<body>
+    <div class="content-wrap">
+        <a href="javascript:history.back()" class="back-btn"><i class="fas fa-arrow-left"></i> Back to Topics</a>
+        
+        <div class="header-flex">
+            <div>
+                <h1 id="page-title">Google Python Questions</h1>
+                <p style="color: #666;">Previous year questions with expert-curated answers.</p>
+            </div>
+            <button class="btn-download" onclick="downloadPDF()">
+                <i class="fas fa-file-pdf"></i> Download PDF
+            </button>
+        </div>
+
+        <div id="qa-container">
+            <!-- QA Cards will be injected here -->
+        </div>
+    </div>
+
+    <script src="js/company-questions.js"></script>
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const company = urlParams.get('company') || "Google";
+        const topic = urlParams.get('topic') || "Python";
+
+        document.getElementById('page-title').innerText = `${company} ${topic} Questions`;
+
+        const container = document.getElementById('qa-container');
+        const data = COMPANY_DATA[company] && COMPANY_DATA[company][topic] ? COMPANY_DATA[company][topic] : [];
+
+        if (data.length === 0) {
+            container.innerHTML = `<div class="qa-card" style="text-align:center;"><h3>No questions available for this selection yet.</h3></div>`;
+        } else {
+            data.forEach((item, index) => {
+                const card = document.createElement('div');
+                card.className = 'qa-card';
+                card.innerHTML = `
+                    <span class="q-label">Question ${index + 1}</span>
+                    <div class="question-text">${item.question}</div>
+                    <div class="answer-box">
+                        <span class="a-label">Expert Answer</span>
+                        <div class="answer-text">${item.answer}</div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function downloadPDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            doc.setFontSize(22);
+            doc.text(`${company} ${topic} Preparation - MockBee`, 20, 20);
+            doc.setFontSize(12);
+            doc.setTextColor(100);
+            doc.text(`Generated on ${new Date().toLocaleDateString()}`, 20, 30);
+            
+            let y = 45;
+            data.forEach((item, i) => {
+                if (y > 250) { doc.addPage(); y = 20; }
+                
+                doc.setFontSize(14);
+                doc.setTextColor(0);
+                doc.setFont(undefined, 'bold');
+                doc.text(`Q${i+1}: ${item.question}`, 20, y, { maxWidth: 170 });
+                y += 20;
+                
+                doc.setFontSize(11);
+                doc.setTextColor(80);
+                doc.setFont(undefined, 'normal');
+                doc.text(`A: ${item.answer}`, 20, y, { maxWidth: 170 });
+                y += 30;
+            });
+            
+            doc.save(`${company}_${topic}_MockBee.pdf`);
+        }
+    </script>
+</body>
+</html>

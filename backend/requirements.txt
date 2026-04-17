@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+pymongo
+google-generativeai
+pydantic
+reportlab
+python-docx
+speechrecognition
+pyttsx3

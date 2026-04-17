@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Select Topic - MockBee</title>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://api.fontshare.com/v2/css?f[]=satoshi@900,700,500,400&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root { --cream-bg: #FFFFFF; --gold: #D8C4B6; --navy: #1A1A1A; }
+        body { font-family: 'Satoshi', sans-serif; background: var(--cream-bg); padding: 40px; color: var(--navy); }
+        .back-btn { 
+            display: inline-flex; 
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 25px; 
+            background: var(--navy);
+            color: var(--gold); 
+            text-decoration: none; 
+            font-weight: 800;
+            padding: 8px 18px;
+            border-radius: 50px;
+            font-size: 0.85rem;
+            transition: all 0.3s;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .back-btn:hover {
+            transform: translateX(-5px);
+            background: #000;
+            color: #fff;
+        }
+        h2 { font-family: 'Playfair Display', serif; font-size: 2rem; margin-bottom: 10px; }
+        p { color: #666; margin-bottom: 30px; }
+        .topics-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px; }
+        .topic-card { background: #FFF; border: 1px solid #E9E4E2; padding: 25px; border-radius: 16px; text-align: center; cursor: pointer; transition: all 0.3s; }
+        .topic-card:hover { border-color: var(--gold); background: #FAF9F8; transform: translateY(-3px); }
+        .topic-card i { font-size: 1.8rem; color: var(--gold-dark); margin-bottom: 15px; display: block; }
+        .topic-card h4 { font-size: 1.1rem; margin-bottom: 5px; }
+        .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <a href="company-prep.html" class="back-btn"><i class="fas fa-arrow-left"></i> Back to Companies</a>
+    <h2 id="company-name">Google Practice</h2>
+    <p id="mode-desc">Select a topic to begin your preparation.</p>
+    
+    <div class="topics-grid" id="topics-render">
+        <!-- Dynamically rendered roles -->
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const company = urlParams.get('company') || "Google";
+        const mode = urlParams.get('mode') || "practice";
+
+        document.getElementById('company-name').innerText = `${company} ${mode.charAt(0).toUpperCase() + mode.slice(1)}`;
+        document.getElementById('mode-desc').innerText = mode === 'view' ? "Select a topic to view previous year questions and answers." : "Select a topic to start an AI-powered practice session.";
+
+        // List of professional roles to show (excluding kids/communication)
+        const PROFESSIONAL_ROLES = [
+            { name: "Python Developer", icon: "fab fa-python" },
+            { name: "Frontend Developer", icon: "fas fa-code" },
+            { name: "Backend Developer", icon: "fas fa-server" },
+            { name: "ML Engineer", icon: "fas fa-brain" },
+            { name: "Data Scientist", icon: "fas fa-chart-pie" },
+            { name: "Cloud Engineer", icon: "fas fa-cloud" },
+            { name: "DevOps Engineer", icon: "fas fa-infinity" },
+            { name: "Cybersecurity Analyst", icon: "fas fa-user-shield" },
+            { name: "Network Engineer", icon: "fas fa-network-wired" },
+            { name: "System Architect", icon: "fas fa-sitemap" },
+            { name: "QA Engineer", icon: "fas fa-vial" },
+            { name: "Mobile Developer", icon: "fas fa-mobile-screen-button" },
+            { name: "Testing", icon: "fas fa-vial-circle-check" },
+            { name: "AWS Specialist", icon: "fab fa-aws" }
+        ];
+
+        const container = document.getElementById('topics-render');
+        PROFESSIONAL_ROLES.forEach(role => {
+            const card = document.createElement('div');
+            card.className = 'topic-card';
+            card.onclick = () => navigateToTopic(role.name);
+            card.innerHTML = `
+                <i class="${role.icon}"></i>
+                <h4>${role.name}</h4>
+            `;
+            container.appendChild(card);
+        });
+
+        function navigateToTopic(topic) {
+            if (mode === 'practice') {
+                window.location.href = `google-interview.html?company=${company}&topic=${encodeURIComponent(topic)}`;
+            } else {
+                window.location.href = `google-questions.html?company=${company}&topic=${encodeURIComponent(topic)}`;
+            }
+        }
+    </script>
+</body>
+</html>
