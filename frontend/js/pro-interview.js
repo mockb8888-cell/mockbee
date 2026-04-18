@@ -140,7 +140,7 @@ function handleUserSubmit() {
         if (t.answer) history.push({ role: "user", content: t.answer });
     });
 
-    fetch('http://127.0.0.1:8000/api/interview/chat', {
+    fetch('https://mockbee.onrender.com/api/interview/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

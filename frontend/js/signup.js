@@ -20,7 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const mockPassword = `oauth_token_${provider.toLowerCase()}`;
 
             // Register directly via backend API
-            fetch('http://127.0.0.1:8000/api/signup', {
+            fetch('https://mockbee.onrender.com/api/signup', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name: mockName, email: mockEmail, password: mockPassword })
@@ -138,7 +138,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const email = emailRaw.toLowerCase();
 
             // Setup API call to FastAPI backend
-            fetch('http://127.0.0.1:8000/api/signup', {
+            fetch('https://mockbee.onrender.com/api/signup', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name: fullname, email: email, password: pass })

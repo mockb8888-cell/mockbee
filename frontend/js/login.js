@@ -90,7 +90,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const mockPassword = `oauth_token_${provider.toLowerCase()}`;
 
             // Try to login first
-            fetch('http://127.0.0.1:8000/api/login', {
+            fetch('https://mockbee.onrender.com/api/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: mockEmail, password: mockPassword })
@@ -102,7 +102,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     finalizeOAuth(data.name, data.email);
                 } else {
                     // Login failed, try to register the mock account
-                    fetch('http://127.0.0.1:8000/api/signup', {
+                    fetch('https://mockbee.onrender.com/api/signup', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ name: mockName, email: mockEmail, password: mockPassword })
@@ -175,7 +175,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const searchEmail = emailRaw.toLowerCase();
 
-            fetch('http://127.0.0.1:8000/api/login', {
+            fetch('https://mockbee.onrender.com/api/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: searchEmail, password: password })

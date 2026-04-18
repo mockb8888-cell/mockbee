@@ -102,7 +102,7 @@ window.populateReport = function (sessionData) {
         const feedbackEl = document.getElementById('ai-feedback-text');
         if (feedbackEl) feedbackEl.innerText = "Analyzing performance with AI... please wait.";
 
-        fetch('http://127.0.0.1:8000/api/interview/evaluate', {
+        fetch('https://mockbee.onrender.com/api/interview/evaluate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -150,7 +150,7 @@ window.populateReport = function (sessionData) {
                     // SAVE TO DATABASE
                     const userEmail = localStorage.getItem('mockbee_user_email');
                     if (userEmail) {
-                        fetch('http://127.0.0.1:8000/api/interview/save', {
+                        fetch('https://mockbee.onrender.com/api/interview/save', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
@@ -191,7 +191,7 @@ window.populateReport = function (sessionData) {
                 // SAVE TO DATABASE
                 const userEmail = localStorage.getItem('mockbee_user_email');
                 if (userEmail) {
-                    fetch('http://127.0.0.1:8000/api/interview/save', {
+                    fetch('https://mockbee.onrender.com/api/interview/save', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({

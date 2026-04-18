@@ -416,7 +416,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 11. Sync Database History
     const userEmailSync = localStorage.getItem('mockbee_user_email');
     if (userEmailSync) {
-        fetch(`http://127.0.0.1:8000/api/interview/history?email=${encodeURIComponent(userEmailSync)}`)
+        fetch(`https://mockbee.onrender.com/api/interview/history?email=${encodeURIComponent(userEmailSync)}`)
         .then(res => res.json())
         .then(data => {
             if (data.status === 'success' && data.history && data.history.length > 0) {
