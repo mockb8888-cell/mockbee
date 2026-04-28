@@ -8,16 +8,17 @@
 """ 
 
 import os, sys, json, time, datetime
+from dotenv import load_dotenv
 
-# ── Paste your FREE Gemini API key here ──────────────────────────────────────
-GEMINI_API_KEY = "AIzaSyB33aX8_QSVxSNCKLTpEdtFXqaxCXEfIA4"
-# ─────────────────────────────────────────────────────────────────────────────
+load_dotenv()
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-import google.generativeai as genai
-genai.configure(api_key=GEMINI_API_KEY)
-MODEL = "gemini-2.5-flash"
+import groq
+client = groq.Groq(api_key=GROQ_API_KEY)
+MODEL = "llama-3.3-70b-versatile"
 
 try:
     import pyttsx3
@@ -41,26 +42,197 @@ except Exception as _me:
 
 # ── Roles / Levels ────────────────────────────────────────────────────────────
 ROLES = [
-    "Software Engineer", "Frontend Developer", "Backend Developer",
-    "Full Stack Developer", "Data Scientist", "ML Engineer",
-    "DevOps Engineer", "Product Manager", "UX Designer", "Business Analyst",
+    "Python Developer",
+    "Frontend Developer",
+    "Backend Developer",
+    "ML Engineer",
+    "Data Scientist",
+    "Cloud Engineer",
+    "DevOps Engineer",
+    "Cybersecurity Analyst",
+    "Network Engineer",
+    "System Architect",
+    "QA Engineer",
+    "Mobile Developer",
+    "Testing Engineer",
+    "AWS Specialist",
 ]
 LEVELS = ["Junior", "Mid-level", "Senior", "Lead / Staff"]
 
-SYSTEM_PROMPT = """You are an expert technical interviewer conducting a mock interview.
-Role: {role} | Level: {level}
+# ── Interview Phases ──────────────────────────────────────────────────────────
+PHASES = [
+    "self_intro",
+    "projects_skills",
+    "technical",
+    "optimization",
+    "behavioural",
+    "hr_logistics",
+]
+
+PHASE_LABELS = {
+    "self_intro":      "📋  Phase 1 — Self Introduction",
+    "projects_skills": "🛠   Phase 2 — Projects & Skills",
+    "technical":       "💻  Phase 3 — Technical Questions",
+    "optimization":    "⚡  Phase 4 — Optimization & Problem Solving",
+    "behavioural":     "🧠  Phase 5 — Behavioural Questions",
+    "hr_logistics":    "📝  Phase 6 — HR & Logistics",
+}
+
+# Questions per phase (approximate targets)
+PHASE_Q_TARGETS = {
+    "self_intro":      2,
+    "projects_skills": 3,
+    "technical":       4,
+    "optimization":    3,
+    "behavioural":     5,
+    "hr_logistics":    5,
+}
+
+# ── System Prompts per Phase ──────────────────────────────────────────────────
+
+PHASE_PROMPTS = {
+
+    "self_intro": """You are a professional interviewer conducting a structured mock interview.
+Role being interviewed for: {role} | Level: {level}
+
+CURRENT PHASE: Self Introduction (Phase 1 of 6)
+
+Your job in this phase:
+- Ask the candidate to introduce themselves (name, background, current role)
+- Ask about their total years of experience
+- Keep it warm and welcoming — this is an ice-breaker
 
 Rules:
 - Ask ONE question at a time
-- After each answer, give a brief 1-line acknowledgment, then ask the next question
-- Mix behavioral (STAR method) and technical questions for the role/level
-- Be professional but encouraging
-- Keep responses concise (2-3 sentences max)
-- After 6-8 exchanges, offer to wrap up
+- Give a brief 1-sentence acknowledgment after each answer before asking next
+- Ask exactly {q_target} questions in this phase, then say:
+  "Thank you! Let's now move on to discuss your projects and experience. [PHASE_COMPLETE]"
+- Do NOT ask technical questions in this phase
+- Be friendly and encouraging
 
-Start by greeting the candidate warmly and asking the first interview question."""
+Start with a warm welcome and ask the candidate to introduce themselves.""",
 
-EVAL_PROMPT = """Evaluate this mock interview for a {role} ({level}) position.
+    "projects_skills": """You are a professional interviewer conducting a structured mock interview.
+Role: {role} | Level: {level}
+
+CURRENT PHASE: Projects & Skills (Phase 2 of 6)
+
+Your job in this phase:
+- Ask about 1-2 significant projects the candidate has worked on
+- Probe: what technologies/skills were used, what was their specific contribution
+- Ask what they learned or challenges they overcame
+- Ask about team size and their role in the project
+
+Rules:
+- Ask ONE question at a time
+- Acknowledge briefly before next question
+- Ask exactly {q_target} questions, then say:
+  "Great insights! Now let's dive into some technical questions. [PHASE_COMPLETE]"
+- Tailor project questions to the {role} domain
+- Do NOT ask HR or pure behavioural questions here""",
+
+    "technical": """You are an expert technical interviewer.
+Role: {role} | Level: {level}
+
+CURRENT PHASE: Technical Questions (Phase 3 of 6)
+
+Your job in this phase:
+- Ask role-specific technical questions appropriate for {level} level
+- Cover core concepts, tools, frameworks, and best practices for a {role}
+- May include code/design questions or scenario-based technical problems
+
+Role-specific focus areas:
+- Python Developer: Python internals, OOP, async, frameworks (Django/FastAPI), data structures
+- Frontend Developer: HTML/CSS/JS, React/Vue/Angular, performance, accessibility
+- Backend Developer: APIs, databases, caching, microservices, security
+- ML Engineer: ML algorithms, model training/evaluation, MLOps, feature engineering
+- Data Scientist: Statistics, EDA, model building, SQL, Python (pandas/sklearn)
+- Cloud Engineer: Cloud services (AWS/GCP/Azure), IaC, networking, cost optimization
+- DevOps Engineer: CI/CD, Docker, Kubernetes, monitoring, scripting
+- Cybersecurity Analyst: Threat analysis, OWASP, penetration testing, incident response
+- Network Engineer: TCP/IP, routing/switching, firewalls, VPN, network monitoring
+- System Architect: System design, scalability, distributed systems, trade-offs
+- QA Engineer: Test strategies, automation (Selenium/Pytest), bug lifecycle, test plans
+- Mobile Developer: iOS/Android, React Native/Flutter, lifecycle, performance
+- Testing Engineer: Manual testing, automation frameworks, API testing, test reporting
+- AWS Specialist: AWS services (EC2, S3, Lambda, RDS, etc.), AWS architecture, IAM, cost
+
+Rules:
+- Ask ONE question at a time
+- Acknowledge answer briefly; point out a key strength or gentle correction
+- Ask exactly {q_target} questions, then say:
+  "Good work on the technical round! Let's now look at optimization scenarios. [PHASE_COMPLETE]"
+- Progressively increase difficulty""",
+
+    "optimization": """You are a senior technical interviewer focusing on optimization.
+Role: {role} | Level: {level}
+
+CURRENT PHASE: Optimization & Problem Solving (Phase 4 of 6)
+
+Your job in this phase:
+- Present real-world optimization challenges relevant to {role}
+- Ask how the candidate would improve performance, scalability, or efficiency
+- Examples: slow query optimization, reducing API latency, improving build times,
+  model inference speed, network bottlenecks, cost reduction on cloud, etc.
+- Ask about trade-offs they would consider
+
+Rules:
+- Ask ONE question at a time
+- After their answer, ask a quick follow-up on trade-offs or alternatives once
+- Ask exactly {q_target} questions, then say:
+  "Excellent thinking! Now let's move to some behavioural questions. [PHASE_COMPLETE]"
+- Keep scenarios realistic and role-relevant""",
+
+    "behavioural": """You are a professional interviewer assessing behavioural competencies.
+Role: {role} | Level: {level}
+
+CURRENT PHASE: Behavioural Questions (Phase 5 of 6)
+
+Your job in this phase — ask ALL of the following (one at a time, in order):
+1. Strengths — "What are your top 2-3 professional strengths? Give an example."
+2. Weaknesses — "What is one area you're actively working to improve?"
+3. Motivation — "Why are you looking to change roles / why are you interested in this position?"
+4. Career vision — "Where do you see yourself in 5 years from now?"
+5. Achievements — "Tell me about a time you handled a conflict or tough situation at work." (STAR method)
+
+Rules:
+- Ask ONE question at a time, in the order above
+- After each answer give a brief, encouraging acknowledgment
+- After question 5, say:
+  "Thank you for sharing that! Finally, let's discuss some logistical details. [PHASE_COMPLETE]"
+- Use STAR method prompts if answers are too vague ("Can you walk me through the Situation, Task, Action, and Result?")""",
+
+    "hr_logistics": """You are an HR interviewer wrapping up the interview.
+Role: {role} | Level: {level}
+
+CURRENT PHASE: HR & Logistics (Phase 6 of 6 — Final Phase)
+
+Your job in this phase — ask ALL of the following (one at a time, in order):
+1. Notice period — "What is your current notice period / how soon can you join?"
+2. Shift timings — "Are you comfortable with shift timings? (mention if role has shifts, e.g. night/rotational)"
+3. Salary — "What is your current CTC and expected CTC?"
+4. Relocation — "Are you open to relocating if required for this role?"
+5. Flexibility — "How flexible are you in terms of work hours, overtime, or travel?"
+
+Rules:
+- Ask ONE question at a time, in the order above
+- Be professional and non-judgmental about their answers
+- After question 5, say:
+  "That's all from my side! Thank you so much for your time today. 
+   We'll review your interview and get back to you. It was great speaking with you! [INTERVIEW_COMPLETE]"
+- Do NOT ask any more questions after the closing statement""",
+}
+
+# ── Evaluation Prompt ─────────────────────────────────────────────────────────
+EVAL_PROMPT = """Evaluate this structured mock interview for a {role} ({level}) position.
+
+The interview was conducted in 6 phases:
+1. Self Introduction
+2. Projects & Skills
+3. Technical Questions
+4. Optimization & Problem Solving
+5. Behavioural Questions
+6. HR & Logistics
 
 Transcript:
 {transcript}
@@ -68,13 +240,25 @@ Transcript:
 Reply ONLY with valid JSON (no markdown, no extra text):
 {{
   "overall": <1-10>,
-  "clarity": <1-10>,
+  "self_intro": <1-10>,
+  "projects_skills": <1-10>,
   "technical": <1-10>,
+  "optimization": <1-10>,
+  "behavioural": <1-10>,
+  "hr_logistics": <1-10>,
   "communication": <1-10>,
   "confidence": <1-10>,
   "strengths": ["...", "...", "..."],
   "improvements": ["...", "...", "..."],
-  "summary": "2-3 sentence overall assessment"
+  "phase_feedback": {{
+    "self_intro": "one sentence feedback",
+    "projects_skills": "one sentence feedback",
+    "technical": "one sentence feedback",
+    "optimization": "one sentence feedback",
+    "behavioural": "one sentence feedback",
+    "hr_logistics": "one sentence feedback"
+  }},
+  "summary": "3-4 sentence overall assessment"
 }}"""
 
 
@@ -149,26 +333,31 @@ def listen_microphone(timeout=10, phrase_limit=30):
         print(clr(f"  ⚠  Service error: {e}", C.RED)); return None
 
 
-# ── Gemini AI ─────────────────────────────────────────────────────────────────
+# ── Groq AI ─────────────────────────────────────────────────────────────────
 def ai_chat(system, history):
-    model = genai.GenerativeModel(model_name=MODEL, system_instruction=system)
-    chat_history = []
-    for m in history[:-1]:
-        chat_history.append({
-            "role": "user" if m["role"] == "user" else "model",
-            "parts": [m["content"]],
-        })
-    chat = model.start_chat(history=chat_history)
-    response = chat.send_message(history[-1]["content"])
-    return response.text.strip()
+    messages = [{"role": "system", "content": system}]
+    for m in history:
+        role = "user" if m["role"] == "user" else "assistant"
+        messages.append({"role": role, "content": m["content"]})
+    
+    completion = client.chat.completions.create(
+        model=MODEL,
+        messages=messages,
+    )
+    return completion.choices[0].message.content.strip()
 
 def ai_evaluate(role, level, history):
     transcript = "\n".join(
         f"{'INTERVIEWER' if m['role']=='assistant' else 'CANDIDATE'}: {m['content']}"
         for m in history)
     prompt = EVAL_PROMPT.format(role=role, level=level, transcript=transcript)
-    model = genai.GenerativeModel(MODEL)
-    raw = model.generate_content(prompt).text.strip()
+    
+    completion = client.chat.completions.create(
+        model=MODEL,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    raw = completion.choices[0].message.content.strip()
+    
     if raw.startswith("```"):
         raw = raw.split("```")[1]
         if raw.startswith("json"): raw = raw[4:].strip()
@@ -203,10 +392,13 @@ def show_results(data, role, level, duration):
           f"  |  Time: {clr(fmt_time(duration), C.DIM)}")
     divider(); print()
     print(clr("  SCORES", C.YELLOW, C.BOLD)); print()
-    for label, key in [("Overall","overall"),("Clarity","clarity"),
-                       ("Technical","technical"),("Communication","communication"),
+    for label, key in [("Overall","overall"), ("Self Intro","self_intro"),
+                       ("Projects","projects_skills"), ("Technical","technical"),
+                       ("Optimization","optimization"), ("Behavioural","behavioural"),
+                       ("HR & Logistics","hr_logistics"),
+                       ("Communication","communication"),
                        ("Confidence","confidence")]:
-        print_score_bar(label, data[key])
+        print_score_bar(label, data.get(key, 0))
     print()
     print(clr("  💪  STRENGTHS", C.GREEN, C.BOLD))
     for s in data.get("strengths", []): print(f"  {clr('✓', C.GREEN)}  {s}")
@@ -302,8 +494,8 @@ def choose_mode():
 def run_interview():
     banner()
 
-    if GEMINI_API_KEY.strip() in ("paste-your-key-here", ""):
-        print(clr("\n  ⚠  Set your Gemini API key in the script!", C.RED, C.BOLD))
+    if not GROQ_API_KEY:
+        print(clr("\n  ⚠  Set your GROQ_API_KEY environment variable!", C.RED, C.BOLD))
         sys.exit(1)
 
     # ── Identify user ─────────────────────────────────────────────────────────
@@ -336,7 +528,10 @@ def run_interview():
     if MONGO_OK:
         session_id = _db.create_interview_session(email, role, level, mode)
 
-    system     = SYSTEM_PROMPT.format(role=role, level=level)
+    phase_idx = 0
+    phase_name = PHASES[phase_idx]
+    q_target = PHASE_Q_TARGETS[phase_name]
+    system = PHASE_PROMPTS[phase_name].format(role=role, level=level, q_target=q_target)
     history    = []
     start_time = time.time()
 
@@ -351,7 +546,7 @@ def run_interview():
     try:
         ai_reply = ai_chat(system, [{"role": "user", "content": "Please begin the interview."}])
     except Exception as e:
-        print(clr(f"\n  ✗  Could not connect to Gemini: {e}", C.RED))
+        print(clr(f"\n  ✗  Could not connect to Groq: {e}", C.RED))
         sys.exit(1)
 
     history.append({"role": "assistant", "content": ai_reply})
@@ -413,6 +608,16 @@ def run_interview():
             _db.save_interview_message(session_id, "assistant", ai_reply)
         print_ai_message(ai_reply)
         if use_tts: speak(ai_reply)
+
+        if "[PHASE_COMPLETE]" in ai_reply:
+            phase_idx += 1
+            if phase_idx < len(PHASES):
+                phase_name = PHASES[phase_idx]
+                q_target = PHASE_Q_TARGETS[phase_name]
+                system = PHASE_PROMPTS[phase_name].format(role=role, level=level, q_target=q_target)
+                print(clr(f"\n  [Moving to {PHASE_LABELS[phase_name]}]", C.CYAN))
+        if "[INTERVIEW_COMPLETE]" in ai_reply:
+            break
 
     # ── Wrap-up ───────────────────────────────────────────────────────────────
     duration = int(time.time() - start_time)

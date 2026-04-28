@@ -48,10 +48,16 @@ class ChatRequest(BaseModel):
     role: str
     level: str
     history: List[Dict[str, str]]
+    phase: Optional[str] = "self_intro"
 
 @app.post("/api/interview/chat")
 def interview_chat(req: ChatRequest):
-    system_prompt = mocker.SYSTEM_PROMPT.format(role=req.role, level=req.level)
+    phase = req.phase
+    if phase not in mocker.PHASES:
+        phase = "self_intro"
+    
+    q_target = mocker.PHASE_Q_TARGETS[phase]
+    system_prompt = mocker.PHASE_PROMPTS[phase].format(role=req.role, level=req.level, q_target=q_target)
     try:
         reply = mocker.ai_chat(system_prompt, req.history)
         return {"status": "success", "reply": reply}

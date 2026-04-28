@@ -28,7 +28,29 @@ document.addEventListener('DOMContentLoaded', () => {
  * Populates the Performance Report UI with data from a specific session
  */
 window.populateReport = function (sessionData) {
-    const { role, transcript, date, totalQuestions } = sessionData;
+    let { role, transcript, date, totalQuestions } = sessionData;
+
+    // Normalize transcript if it uses the newer {role, content} format
+    if (transcript && transcript.length > 0 && transcript[0].role !== undefined) {
+        const normalized = [];
+        let currentQ = "";
+        transcript.forEach(t => {
+            if (t.role === "assistant" || t.role === "model") {
+                if (currentQ) normalized.push({ question: currentQ, answer: "No answer provided" });
+                currentQ = t.content;
+            } else if (t.role === "user") {
+                if (currentQ) {
+                    normalized.push({ question: currentQ, answer: t.content });
+                    currentQ = "";
+                } else {
+                    normalized.push({ question: "User input", answer: t.content });
+                }
+            }
+        });
+        if (currentQ) normalized.push({ question: currentQ, answer: "No answer provided" });
+        transcript = normalized;
+        sessionData.transcript = transcript; // Update reference for saves
+    }
 
     // 2. Populate Header
     const roleDisplay = document.getElementById('role-display');
@@ -126,8 +148,10 @@ window.populateReport = function (sessionData) {
 
                 const analysis = {
                     overall: (ev.overall || 5) * 10,
-                    clarity: (ev.clarity || 5) * 10,
+                    communication: (ev.communication || 5) * 10,
                     technical: (ev.technical || 5) * 10,
+                    optimization: (ev.optimization || 5) * 10,
+                    behavioural: (ev.behavioural || 5) * 10,
                     confidence: (ev.confidence || 5) * 10,
                     questionScores: qScores,
                     confidenceScores: cScores,
@@ -253,8 +277,10 @@ function analyzePerformance(transcript, role) {
     if (!transcript || transcript.length === 0) {
         return {
             overall: 0,
-            clarity: 0,
+            communication: 0,
             technical: 0,
+            optimization: 0,
+            behavioural: 0,
             confidence: 0,
             questionScores: [0],
             confidenceScores: [0],
@@ -358,8 +384,10 @@ function analyzePerformance(transcript, role) {
 
     return {
         overall,
-        clarity: Math.min(avgClarity, 100),
+        communication: Math.min(avgClarity, 100),
         technical: Math.min(avgTechnical, 100),
+        optimization: Math.min(avgTechnical, 100),
+        behavioural: Math.min(avgClarity, 100),
         confidence: Math.min(avgConfidence, 100),
         questionScores,
         confidenceScores,
@@ -396,9 +424,10 @@ function updateScores(analysis) {
     }
 
     // Skill Bars
-    updateSkill('clarity', analysis.clarity);
-    updateSkill('technical', analysis.technical);
-    updateSkill('confidence', analysis.confidence);
+    updateSkill('communication', analysis.communication || 50);
+    updateSkill('technical', analysis.technical || 50);
+    updateSkill('optimization', analysis.optimization || 50);
+    updateSkill('behavioural', analysis.behavioural || 50);
 
     // AI Feedback Text
     const feedbackText = document.getElementById('ai-feedback-text');

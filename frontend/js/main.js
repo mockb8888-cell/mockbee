@@ -13,6 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // User is signed in!
     const navLogin = document.getElementById('nav-login');
     const navSignup = document.getElementById('nav-signup');
+    const navDesktopDashboard = document.getElementById('nav-desktop-dashboard');
     const navUserAvatar = document.getElementById('nav-user-avatar');
     const navUserInitial = document.getElementById('nav-user-initial');
     
@@ -24,10 +25,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (navLogin) navLogin.style.display = 'none';
     if (navSignup) navSignup.style.display = 'none';
+    if (navDesktopDashboard) navDesktopDashboard.style.display = 'inline-block';
+    
     if (mobLogin) mobLogin.style.display = 'none';
     if (mobSignup) mobSignup.style.display = 'none';
-    
-    if (mobDashboard) mobDashboard.style.display = 'block';
+    if (mobDashboard) mobDashboard.style.display = ''; // Clear inline block so media queries handle it
     
     if (navUserWrap && navUserAvatar) {
       navUserWrap.style.display = 'block';

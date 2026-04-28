@@ -12,6 +12,18 @@ let roleName = "General Role";
 let isInterviewComplete = false;
 let interviewTranscript = [];
 
+const PHASES = [
+    "self_intro",
+    "projects_skills",
+    "technical",
+    "optimization",
+    "behavioural",
+    "hr_logistics"
+];
+let currentPhaseIndex = 0;
+let questionCount = 0;
+let targetTotalQuestions = 22;
+
 // AI Feedback Data
 const FEEDBACK_METADATA = {
     "Python": ["decorators", "gil", "memory", "generators", "multiprocessing", "oop"],
@@ -61,32 +73,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const roleTitleElem = document.getElementById('role-title');
     if (roleTitleElem) roleTitleElem.innerText = roleName;
 
-    // 2. Load Questions for Role from PRO_QUESTION_BANK
-    // Find matching key
-    const foundKey = Object.keys(PRO_QUESTION_BANK).find(key => roleName.toLowerCase().includes(key.toLowerCase()));
-    let baseQuestions = foundKey ? PRO_QUESTION_BANK[foundKey] : PRO_QUESTION_BANK["Python Developer"];
-
-    // USER OVERRIDE: Kids and Communication cards only get 8 questions in dashboard
-    const limitedRoles = ["Python Kids Level", "HTML Kids Level", "CSS Kids Level", "Communication Cards"];
-    if (limitedRoles.includes(roleName)) {
-        questions = baseQuestions.slice(0, 8);
-    } else {
-        questions = baseQuestions;
-    }
-
     // Update UI Total
     const totalElem = document.getElementById('total-q');
-    if (totalElem) totalElem.innerText = questions.length;
+    if (totalElem) totalElem.innerText = "~" + targetTotalQuestions;
 
     // 3. Setup UI
     const userInput = document.getElementById('user-input');
     const submitBtn = document.getElementById('submit-btn');
 
     // 4. Start Interview
-    sendAIMessage(`Welcome to your **${roleName}** Pro Session. This is an in-depth assessment with over 50 scenarios. Let's begin.`);
+    sendAIMessage(`Welcome to your **${roleName}** Pro Session. This is an in-depth structured mock interview. Let's begin.`);
 
     setTimeout(() => {
-        askNextQuestion();
+        triggerAI("Please begin the interview.");
     }, 2000);
 
     // 5. Handle Submit
@@ -117,14 +116,15 @@ function handleUserSubmit() {
     userInput.value = "";
     addUserMessage(message);
 
-    if (questions[currentQuestionIndex]) {
-        interviewTranscript.push({
-            question: questions[currentQuestionIndex],
-            answer: message
-        });
-    }
+    interviewTranscript.push({
+        role: "user",
+        content: message
+    });
 
-    // Provide typing indicator
+    triggerAI(message);
+}
+
+function triggerAI(userMessage) {
     const chatBox = document.getElementById('chat-box');
     const tempDiv = document.createElement('div');
     tempDiv.className = "message message--ai";
@@ -133,12 +133,11 @@ function handleUserSubmit() {
     chatBox.appendChild(tempDiv);
     chatBox.scrollTo({ top: chatBox.scrollHeight, behavior: 'smooth' });
 
-    // Build history for backend API
-    const history = [];
-    interviewTranscript.forEach(t => {
-        history.push({ role: "assistant", content: t.question });
-        if (t.answer) history.push({ role: "user", content: t.answer });
-    });
+    if (userMessage === "Please begin the interview." && interviewTranscript.length === 0) {
+        interviewTranscript.push({ role: "user", content: userMessage });
+    }
+
+    const currentPhase = PHASES[currentPhaseIndex] || "hr_logistics";
 
     fetch('https://mockbee.onrender.com/api/interview/chat', {
         method: 'POST',
@@ -146,7 +145,8 @@ function handleUserSubmit() {
         body: JSON.stringify({
             role: roleName,
             level: "Senior", // Pro level
-            history: history
+            history: interviewTranscript,
+            phase: currentPhase
         })
     })
     .then(response => response.json())
@@ -154,28 +154,40 @@ function handleUserSubmit() {
         const ind = document.getElementById('typing-indicator');
         if (ind) ind.remove();
 
-        currentQuestionIndex++;
+        let aiReply = data.reply || "Could you elaborate on that?";
         
-        // Show Quit & Complete button after 10 questions
-        if (currentQuestionIndex >= 10) {
+        let phaseAdvance = false;
+        if (aiReply.includes("[PHASE_COMPLETE]")) {
+            aiReply = aiReply.replace("[PHASE_COMPLETE]", "").trim();
+            phaseAdvance = true;
+        }
+
+        let isDone = false;
+        if (aiReply.includes("[INTERVIEW_COMPLETE]")) {
+            aiReply = aiReply.replace("[INTERVIEW_COMPLETE]", "").trim();
+            isDone = true;
+        }
+
+        interviewTranscript.push({ role: "assistant", content: aiReply });
+        sendAIMessage(aiReply);
+        
+        questionCount++;
+        
+        // Show Quit & Complete button after 5 questions
+        if (questionCount >= 5) {
             const quitBtn = document.getElementById('quit-complete-btn');
             if (quitBtn) quitBtn.style.display = 'block';
         }
 
-        if (currentQuestionIndex < questions.length) {
-            const feedback = data.reply || "Good point. Let's move on.";
-            sendAIMessage(feedback, true);
+        updateProgress();
 
-            setTimeout(() => {
-                updateProgress();
-                askNextQuestion();
-            }, 1800);
-        } else {
-            if (isInterviewComplete) return;
+        if (phaseAdvance) {
+            currentPhaseIndex++;
+        }
+
+        if (isDone || currentPhaseIndex >= PHASES.length) {
             isInterviewComplete = true;
-            updateProgress();
-            sendAIMessage(data.reply || "Masterful performance. You have completed the full assessment. Your report is now ready.", false);
-            setTimeout(showResultsButton, 1000);
+            setTimeout(showResultsButton, 1500);
         }
     })
     .catch(err => {
@@ -186,40 +198,7 @@ function handleUserSubmit() {
     });
 }
 
-function generateDynamicFeedback(answer, question) {
-    const userAns = answer.toLowerCase();
-    const currentRole = roleName || "Developer";
-    const wordCount = answer.trim().split(/\s+/).length;
-
-    let roleKeywords = [];
-    for (const key in FEEDBACK_METADATA) {
-        if (currentRole.toLowerCase().includes(key.toLowerCase())) {
-            roleKeywords = FEEDBACK_METADATA[key];
-            break;
-        }
-    }
-
-    const matchedKeywords = roleKeywords.filter(kw => userAns.includes(kw.toLowerCase()));
-
-    if (wordCount < 6 || (matchedKeywords.length === 0 && wordCount < 15)) {
-        return TOUGH_FEEDBACK[Math.floor(Math.random() * TOUGH_FEEDBACK.length)];
-    }
-
-    if (matchedKeywords.length > 0) {
-        const randomTemplate = FEEDBACK_TEMPLATES[Math.floor(Math.random() * FEEDBACK_TEMPLATES.length)];
-        const featuredKeyword = matchedKeywords[0];
-        return randomTemplate.replace("{keyword}", featuredKeyword).replace("{role}", currentRole);
-    }
-
-    return GENERIC_FEEDBACK[Math.floor(Math.random() * GENERIC_FEEDBACK.length)];
-}
-
-function askNextQuestion() {
-    if (questions && currentQuestionIndex < questions.length) {
-        const qText = `**Q${currentQuestionIndex + 1}:** ${questions[currentQuestionIndex]}`;
-        sendAIMessage(qText);
-    }
-}
+// (Removed static question tracking and dynamic feedback overrides to match phased model)
 
 function sendAIMessage(text, isFeedback = false) {
     const chatBox = document.getElementById('chat-box');
@@ -259,10 +238,9 @@ function addUserMessage(text) {
 function updateProgress() {
     const currentQ = document.getElementById('current-q');
     const fill = document.querySelector('.progress-bar-fill');
-    if (!questions.length) return;
-    const displayIndex = Math.min(currentQuestionIndex + 1, questions.length);
-    currentQ.innerText = displayIndex;
-    const percent = (displayIndex / questions.length) * 100;
+    
+    currentQ.innerText = questionCount;
+    const percent = Math.min((questionCount / targetTotalQuestions) * 100, 100);
     fill.style.width = percent + "%";
 }
 
@@ -313,10 +291,11 @@ function showResultsButton() {
 
         // Save session data to localStorage
         const sessionData = {
+            id: Date.now(),
             role: roleName,
             transcript: interviewTranscript,
             date: new Date().toLocaleDateString(),
-            totalQuestions: questions.length,
+            totalQuestions: questionCount,
             isPro: true
         };
 

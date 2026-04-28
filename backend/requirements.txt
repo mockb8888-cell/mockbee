@@ -1,7 +1,8 @@
 fastapi
 uvicorn
 pymongo
-google-generativeai
+groq
+python-dotenv
 pydantic
 reportlab
 python-docx
