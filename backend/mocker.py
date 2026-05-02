@@ -538,7 +538,8 @@ def run_interview():
     phase_idx = 0
     phase_name = PHASES[phase_idx]
     q_target = PHASE_Q_TARGETS[phase_name]
-    system = PHASE_PROMPTS[phase_name].format(role=role, level=level, q_target=q_target)
+    base_system = PHASE_PROMPTS[phase_name].format(role=role, level=level, q_target=q_target)
+    questions_in_phase = 0
     history    = []
     start_time = time.time()
 
@@ -550,8 +551,10 @@ def run_interview():
     divider("═")
 
     print(clr("\n  ⏳  Starting interview...", C.DIM))
+    system = base_system + f"\n\nPROGRESS: You have asked 0 questions out of {q_target} in this phase. You MUST ask exactly ONE new question now."
     try:
         ai_reply = ai_chat(system, [{"role": "user", "content": "Please begin the interview."}])
+        questions_in_phase += 1
     except Exception as e:
         print(clr(f"\n  ✗  Could not connect to Groq: {e}", C.RED))
         sys.exit(1)
@@ -605,6 +608,16 @@ def run_interview():
         history.append({"role": "user", "content": user_text})
 
         print(clr("  ⏳  Thinking...", C.DIM))
+        
+        system = base_system
+        if len(history) > 1:
+            system += "\n\nCRITICAL INSTRUCTION: First, carefully analyze the candidate's last answer and provide brief, constructive feedback before moving to the next point."
+            
+        if questions_in_phase >= q_target:
+            system += "\n\nCRITICAL INSTRUCTION: You have reached the required number of questions for this phase. DO NOT ask any more questions. ONLY provide your feedback on their last answer (if applicable), state your transition sentence, and end with [PHASE_COMPLETE]."
+        else:
+            system += f"\n\nPROGRESS: You have asked {questions_in_phase} questions out of {q_target} in this phase. You MUST ask exactly ONE new question now."
+
         try:
             ai_reply = ai_chat(system, history)
         except Exception as e:
@@ -621,8 +634,12 @@ def run_interview():
             if phase_idx < len(PHASES):
                 phase_name = PHASES[phase_idx]
                 q_target = PHASE_Q_TARGETS[phase_name]
-                system = PHASE_PROMPTS[phase_name].format(role=role, level=level, q_target=q_target)
+                base_system = PHASE_PROMPTS[phase_name].format(role=role, level=level, q_target=q_target)
+                questions_in_phase = 0
                 print(clr(f"\n  [Moving to {PHASE_LABELS[phase_name]}]", C.CYAN))
+        else:
+            questions_in_phase += 1
+            
         if "[INTERVIEW_COMPLETE]" in ai_reply:
             break
 
