@@ -7,6 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <style>
         :root {
             --cream-bg: #F9F7F5;
@@ -326,6 +327,22 @@
             transform: translateY(-1px);
         }
 
+        .btn-action {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 6px;
+            transition: all 0.2s;
+            font-size: 0.9rem;
+        }
+        .btn-action.delete { color: var(--red); }
+        .btn-action.delete:hover { background: rgba(229, 57, 53, 0.1); }
+        .btn-action.download { color: var(--navy); }
+        .btn-action.download:hover { background: rgba(26, 26, 26, 0.1); }
+        .btn-action.overview { color: var(--green); }
+        .btn-action.overview:hover { background: rgba(39, 174, 96, 0.1); }
+
         @media (max-width: 900px) {
             .stats-row { grid-template-columns: repeat(2, 1fr); padding: 20px; }
             .table-container { padding: 16px 20px; }
@@ -413,6 +430,15 @@
         </div>
         <div id="sessions-table-wrap">
             <div class="loading-msg"><i class="fas fa-spinner fa-spin"></i>Loading sessions...</div>
+        </div>
+    </div>
+
+    <!-- Report Overview Modal -->
+    <div id="overview-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:1000; align-items:center; justify-content:center; backdrop-filter: blur(4px);">
+        <div style="background:#fff; width:650px; max-height:85vh; border-radius:14px; padding:30px; overflow-y:auto; position:relative; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
+            <button onclick="document.getElementById('overview-modal').style.display='none'" style="position:absolute; top:20px; right:20px; border:none; background:none; cursor:pointer; font-size:1.4rem; color:#666; transition: color 0.2s;"><i class="fas fa-times"></i></button>
+            <h2 style="margin-bottom:20px; font-weight:800; font-size: 1.5rem; color: var(--navy);">Report Overview</h2>
+            <div id="overview-content" style="font-size:0.95rem; line-height:1.6; color:var(--text-dark);"></div>
         </div>
     </div>
 
@@ -507,6 +533,7 @@
                         <th>Name</th>
                         <th>Created</th>
                         <th>Last Seen</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>`;
@@ -520,6 +547,11 @@
                     <td>${u.name || '—'}</td>
                     <td>${created}</td>
                     <td>${lastSeen}</td>
+                    <td>
+                        <button class="btn-action delete" title="Delete User" onclick="deleteUser('${u.email}')">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
                 </tr>`;
             });
 
@@ -541,10 +573,10 @@
                         <th>#</th>
                         <th>User Email</th>
                         <th>Role</th>
-                        <th>Mode</th>
                         <th>Score</th>
                         <th>Date</th>
                         <th>Saved At</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>`;
@@ -567,10 +599,20 @@
                     <td>${i + 1}</td>
                     <td class="email-col">${s.user_email || '—'}</td>
                     <td><span class="role-tag">${s.role || '—'}</span></td>
-                    <td>${s.mode || 'standard'}</td>
                     <td><span class="score-badge ${badgeClass}">${badgeText}</span></td>
                     <td>${date}</td>
                     <td>${savedAt}</td>
+                    <td>
+                        <button class="btn-action overview" title="Report Overview" onclick="showOverview('${s.id}')">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                        <button class="btn-action download" title="Download PDF" onclick="downloadReportAsPDF('${s.id}')">
+                            <i class="fas fa-file-pdf"></i>
+                        </button>
+                        <button class="btn-action delete" title="Delete Session" onclick="deleteSession('${s.id}')">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
                 </tr>`;
             });
 
@@ -599,6 +641,142 @@
 
         // ── Refresh ──
         document.getElementById('refresh-btn').addEventListener('click', loadData);
+
+        // ── Delete User ──
+        function deleteUser(email) {
+            if (!confirm(`Are you sure you want to delete user ${email} and all their interview sessions? This action cannot be undone.`)) return;
+            
+            fetch(`${API_BASE}/api/admin/users/${encodeURIComponent(email)}?key=${encodeURIComponent(ADMIN_KEY)}`, {
+                method: 'DELETE'
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    alert('User deleted successfully.');
+                    loadData(); // Refresh data
+                } else {
+                    alert('Error: ' + data.detail);
+                }
+            })
+            .catch(err => alert('Failed to delete user. Make sure backend is running.'));
+        }
+
+        // ── Delete Session ──
+        function deleteSession(sessionId) {
+            if (!confirm('Are you sure you want to delete this interview session?')) return;
+            
+            fetch(`${API_BASE}/api/admin/sessions/${encodeURIComponent(sessionId)}?key=${encodeURIComponent(ADMIN_KEY)}`, {
+                method: 'DELETE'
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    alert('Session deleted.');
+                    loadData();
+                } else {
+                    alert('Error: ' + data.detail);
+                }
+            })
+            .catch(err => alert('Failed to delete session.'));
+        }
+
+        // ── Report Overview ──
+        function showOverview(sessionId) {
+            const session = allSessions.find(s => s.id === sessionId);
+            if (!session) return;
+
+            let html = `
+                <div style="margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 15px;">
+                    <div style="background: #f5f5f5; padding: 10px 15px; border-radius: 8px;"><strong>Candidate:</strong> ${session.user_email}</div>
+                    <div style="background: #f5f5f5; padding: 10px 15px; border-radius: 8px;"><strong>Role:</strong> ${session.role}</div>
+                    <div style="background: #f5f5f5; padding: 10px 15px; border-radius: 8px;"><strong>Score:</strong> ${session.score}%</div>
+                </div>
+            `;
+
+            if (session.analysis && session.analysis.summary) {
+                html += `
+                    <h3 style="margin-bottom:10px; color:var(--navy);">Performance Summary</h3>
+                    <div style="background:#fffcf9; padding:20px; border-left:4px solid var(--gold); border-radius:4px; margin-bottom:20px; font-size:15px; white-space:pre-wrap;">${session.analysis.summary}</div>
+                `;
+            } else {
+                html += `<p style="color: #666; font-style: italic;">No summary available.</p>`;
+            }
+
+            document.getElementById('overview-content').innerHTML = html;
+            document.getElementById('overview-modal').style.display = 'flex';
+        }
+
+        // ── Download Report as PDF ──
+        function downloadReportAsPDF(sessionId) {
+            const session = allSessions.find(s => s.id === sessionId);
+            if (!session) {
+                alert('Session data not found.');
+                return;
+            }
+            
+            // Change button icon to spinner
+            const btn = event.currentTarget;
+            const icon = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            btn.disabled = true;
+            
+            const container = document.createElement('div');
+            container.style.padding = '40px';
+            container.style.fontFamily = 'Inter, sans-serif';
+            container.style.color = '#1A1A1A';
+            
+            let html = `
+                <h1 style="font-size:24px; color:#1A1A1A; margin-bottom:10px;">MockBee Interview Report</h1>
+                <p><strong>Candidate:</strong> ${session.user_email}</p>
+                <p><strong>Role:</strong> ${session.role}</p>
+                <p><strong>Score:</strong> ${session.score}%</p>
+                <p><strong>Date:</strong> ${session.date}</p>
+                <hr style="margin:20px 0; border:0; border-top:1px solid #eee;">
+            `;
+            
+            if (session.analysis && session.analysis.summary) {
+                html += `
+                    <h3 style="font-size:18px; margin-bottom:10px; color:#1A1A1A;">Feedback Summary</h3>
+                    <div style="background:#f9f9f9; padding:15px; border-left:4px solid #D8C4B6; margin-bottom:20px; font-size:14px; white-space:pre-wrap;">${session.analysis.summary}</div>
+                `;
+            }
+            
+            html += `<h3 style="font-size:18px; margin-bottom:10px; color:#1A1A1A;">Interview Transcript</h3>`;
+            
+            if (session.transcript && session.transcript.length > 0) {
+                session.transcript.forEach(msg => {
+                    const isAI = msg.role === 'assistant';
+                    html += `
+                        <div style="margin-bottom:15px;">
+                            <strong style="color:${isAI ? '#B09E93' : '#27AE60'}">${isAI ? 'Interviewer' : 'Candidate'}:</strong>
+                            <p style="margin-top:5px; font-size:14px;">${msg.content}</p>
+                        </div>
+                    `;
+                });
+            } else {
+                html += `<p style="font-size:14px;">No transcript available.</p>`;
+            }
+            
+            container.innerHTML = html;
+            
+            const safeDate = session.date ? session.date.replace(/[/:]/g, '-') : 'unknown';
+            const opt = {
+                margin:       0.5,
+                filename:     `mockbee_report_${session.user_email}_${safeDate}.pdf`,
+                image:        { type: 'jpeg', quality: 0.98 },
+                html2canvas:  { scale: 2 },
+                jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+            };
+            
+            html2pdf().set(opt).from(container).save().then(() => {
+                btn.innerHTML = icon;
+                btn.disabled = false;
+            }).catch(err => {
+                alert('PDF generation failed.');
+                btn.innerHTML = icon;
+                btn.disabled = false;
+            });
+        }
 
         // ── Init ──
         loadData();

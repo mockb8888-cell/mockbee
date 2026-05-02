@@ -193,6 +193,23 @@ def admin_get_all_sessions(key: str):
     docs = list(db._col("interview_sessions").find({}, {"_id": 0}).sort("saved_at", -1))
     return {"status": "success", "sessions": docs}
 
+@app.delete("/api/admin/users/{email}")
+def admin_delete_user(email: str, key: str):
+    """Deletes a user and all their sessions. Requires admin key."""
+    if key != ADMIN_PASSWORD:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    db._col("users").delete_one({"_id": email})
+    db._col("interview_sessions").delete_many({"user_email": email})
+    return {"status": "success", "message": "User and their sessions deleted"}
+
+@app.delete("/api/admin/sessions/{session_id}")
+def admin_delete_session(session_id: str, key: str):
+    """Deletes a specific interview session. Requires admin key."""
+    if key != ADMIN_PASSWORD:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    db._col("interview_sessions").delete_one({"id": session_id})
+    return {"status": "success", "message": "Session deleted"}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="127.0.0.1", port=8000)
