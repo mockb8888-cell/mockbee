@@ -75,12 +75,12 @@
 
                     <div class="skill-row">
                         <div class="skill-header">
-                            <div class="skill-name"><i class="fas fa-comments"></i> Communication</div>
-                            <div class="skill-tag" id="communication-tag">--</div>
-                            <div class="skill-val" id="communication-val">0</div>
+                            <div class="skill-name"><i class="fas fa-shield-halved"></i> Clarity</div>
+                            <div class="skill-tag" id="clarity-tag">--</div>
+                            <div class="skill-val" id="clarity-val">0</div>
                         </div>
                         <div class="bar-bg">
-                            <div class="bar-fill" id="communication-bar" style="width: 0%;"></div>
+                            <div class="bar-fill" id="clarity-bar" style="width: 0%;"></div>
                         </div>
                     </div>
 
@@ -97,7 +97,29 @@
 
                     <div class="skill-row">
                         <div class="skill-header">
-                            <div class="skill-name"><i class="fas fa-bolt"></i> Optimization</div>
+                            <div class="skill-name"><i class="fas fa-bolt"></i> Confidence</div>
+                            <div class="skill-tag" id="confidence-tag">--</div>
+                            <div class="skill-val" id="confidence-val">0</div>
+                        </div>
+                        <div class="bar-bg">
+                            <div class="bar-fill" id="confidence-bar" style="width: 0%;"></div>
+                        </div>
+                    </div>
+
+                    <div class="skill-row">
+                        <div class="skill-header">
+                            <div class="skill-name"><i class="fas fa-user-circle"></i> Self Introduction</div>
+                            <div class="skill-tag" id="self-intro-tag">--</div>
+                            <div class="skill-val" id="self-intro-val">0</div>
+                        </div>
+                        <div class="bar-bg">
+                            <div class="bar-fill" id="self-intro-bar" style="width: 0%;"></div>
+                        </div>
+                    </div>
+
+                    <div class="skill-row">
+                        <div class="skill-header">
+                            <div class="skill-name"><i class="fas fa-tachometer-alt"></i> Optimization</div>
                             <div class="skill-tag" id="optimization-tag">--</div>
                             <div class="skill-val" id="optimization-val">0</div>
                         </div>
@@ -105,10 +127,10 @@
                             <div class="bar-fill" id="optimization-bar" style="width: 0%;"></div>
                         </div>
                     </div>
-                    
+
                     <div class="skill-row">
                         <div class="skill-header">
-                            <div class="skill-name"><i class="fas fa-brain"></i> Behavioural</div>
+                            <div class="skill-name"><i class="fas fa-users"></i> Behavioural Questions</div>
                             <div class="skill-tag" id="behavioural-tag">--</div>
                             <div class="skill-val" id="behavioural-val">0</div>
                         </div>
@@ -226,7 +248,17 @@
                 </div>
             </div>
 
+            <!-- Part 3.5: Phase-by-Phase Breakdown (structured interviews only) -->
+            <div class="card" id="phase-breakdown-container" style="display:none; margin-top: 0;">
+                <div class="card-title" style="margin-bottom: 20px;">
+                    <i class="fas fa-layer-group" style="color: var(--gold-dark); margin-right: 8px;"></i>
+                    Phase-by-Phase Breakdown
+                </div>
+                <div id="phase-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px;"></div>
+            </div>
+
             <!-- Part 4: Interview Transcript Summary (Optimized Slider) -->
+
             <div class="card transcript-panel">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                     <div class="card-title" style="margin-bottom: 0;">Answered Questions</div>
@@ -268,6 +300,7 @@
     </div>
 
     <!-- Report Logic -->
+    <script src="js/config.js"></script>
     <script src="js/performance.js"></script>
     <script>
         let currentRole = "";
@@ -281,9 +314,9 @@
             }
 
             if (isCurrentProReport) {
-                window.parent.location.href = 'dashboard.html?page=roles';
+                window.parent.location.href = 'dashboard.html?page=feedback';
             } else {
-                window.parent.location.href = 'dashboard.html?page=practice';
+                window.parent.location.href = 'dashboard.html?page=feedback';
             }
         }
 
@@ -377,12 +410,13 @@
                 text: "You won't be able to recover this session feedback.",
                 icon: 'warning',
                 showCancelButton: true,
-                confirmButtonColor: '#1a1a1a',
-                cancelButtonColor: '#d33',
+                confirmButtonColor: '#1A1A1A',
+                cancelButtonColor: '#D8C4B6',
                 confirmButtonText: 'Yes, delete it!',
                 cancelButtonText: 'Cancel',
-                background: '#ffffff',
-                color: '#1a1a1a'
+                background: '#FFFFFF',
+                color: '#1A1A1A',
+                iconColor: '#D8C4B6'
             }).then((result) => {
                 if (result.isConfirmed) {
                     let history = JSON.parse(localStorage.getItem('mockbee_interviews') || '[]');
@@ -394,7 +428,10 @@
                         text: 'Your report has been removed.',
                         icon: 'success',
                         timer: 1500,
-                        showConfirmButton: false
+                        showConfirmButton: false,
+                        background: '#FFFFFF',
+                        color: '#1A1A1A',
+                        iconColor: '#27AE60'
                     }).then(() => {
                         window.location.reload();
                     });
@@ -440,7 +477,19 @@
                     return session.isPro;
                 });
 
-                if (proHistory.length === 0) {
+                // Unique Filter: Prevent duplicates from appearing in UI
+                const uniqueHistory = [];
+                const seen = new Set();
+                proHistory.forEach(session => {
+                    // Use role and date as the unique identifier to catch duplicates even if IDs differ
+                    const identifier = `${session.role}-${session.date}`.toLowerCase().trim();
+                    if (!seen.has(identifier)) {
+                        seen.add(identifier);
+                        uniqueHistory.push(session);
+                    }
+                });
+
+                if (uniqueHistory.length === 0) {
                     historyGrid.innerHTML = `
                          <div style="text-align: center; color: var(--text-medium); width: 100%; grid-column: 1 / -1; padding: 60px; background: #fff; border-radius: 12px; border: 1px dashed var(--cream-dark);">
                              <i class="fas fa-file-signature" style="font-size: 2.5rem; color: var(--gold-dark); margin-bottom: 15px;"></i>
@@ -455,7 +504,7 @@
                     // Let's assume they want a toggle or just a clearer separation.
                     // For now, let's just make sure they look great and have the right icons.
 
-                    proHistory.forEach((session, index) => {
+                    uniqueHistory.forEach((session, index) => {
                         // Logic to determine icon based on role OR mode
                         let iconClass = "fas fa-user-tie";
                         const roleLower = session.role.toLowerCase();

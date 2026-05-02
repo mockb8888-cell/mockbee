@@ -44,7 +44,26 @@ document.addEventListener('DOMContentLoaded', () => {
     const userPlanBadge = document.querySelector('.user-plan-mini');
 
     const updateSubUI = (isSubbed) => {
-        const subscribedPlan = localStorage.getItem('mockbee_subscribed_plan') || 'pro';
+        let subscribedPlan = localStorage.getItem('mockbee_subscribed_plan');
+        
+        // Robust check: If session keys are missing but registry says they are subbed, restore them
+        if (!isSubbed || !subscribedPlan) {
+            const email = localStorage.getItem('mockbee_user_email');
+            if (email) {
+                const accounts = JSON.parse(localStorage.getItem('mockbee_accounts') || '{}');
+                const userAcc = accounts[email];
+                if (userAcc && userAcc.subscribed) {
+                    isSubbed = true;
+                    subscribedPlan = userAcc.subscribedPlan || 'standard';
+                    // Restore to session
+                    localStorage.setItem('mockbee_subscribed', 'true');
+                    localStorage.setItem('mockbee_subscribed_plan', subscribedPlan);
+                    if (userAcc.endDate) localStorage.setItem('mockbee_sub_end_date', userAcc.endDate);
+                }
+            }
+        }
+
+        if (!subscribedPlan) subscribedPlan = 'free';
 
         if (isSubbed) {
             subBtn?.classList.add('is-subscribed');
@@ -56,6 +75,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (userPlanBadge) {
                     userPlanBadge.style.backgroundColor = 'transparent';
                     userPlanBadge.style.color = '#F2C94C';
+                    userPlanBadge.style.fontWeight = '800';
                 }
                 if (subBtn) {
                     subBtn.style.setProperty('background-color', '#F2C94C', 'important');
@@ -69,6 +89,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (userPlanBadge) {
                     userPlanBadge.style.backgroundColor = 'transparent';
                     userPlanBadge.style.color = '#27AE60';
+                    userPlanBadge.style.fontWeight = '800';
                 }
                 if (subBtn) {
                     subBtn.style.setProperty('background-color', '#27AE60', 'important');
@@ -83,6 +104,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 userPlanBadge.textContent = 'FREE PLAN';
                 userPlanBadge.style.backgroundColor = '';
                 userPlanBadge.style.color = '';
+                userPlanBadge.style.fontWeight = '';
             }
             if (subBtn) {
                 subBtn.style.backgroundColor = '';
@@ -93,7 +115,8 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // Initial load
-    updateSubUI(localStorage.getItem('mockbee_subscribed') === 'true');
+    const initialSubCheck = localStorage.getItem('mockbee_subscribed') === 'true';
+    updateSubUI(initialSubCheck);
 
     subBtn?.addEventListener('click', () => {
         const isCurrentlySubbed = localStorage.getItem('mockbee_subscribed') === 'true';
@@ -174,12 +197,21 @@ document.addEventListener('DOMContentLoaded', () => {
     const notifBell = document.querySelector('.notif-bell');
     const notifDot = document.querySelector('.notif-dot');
 
+    const syncNotifDot = () => {
+        const isUnread = localStorage.getItem('mockbee_notif_unread') === 'true';
+        const notifications = JSON.parse(localStorage.getItem('mockbee_notifications') || '[]');
+        
+        if (isUnread && notifications.length > 0 && notifDot) {
+            notifDot.style.display = 'block';
+        } else if (notifDot) {
+            notifDot.style.display = 'none';
+            localStorage.setItem('mockbee_notif_unread', 'false');
+        }
+    };
+
     const renderNotifications = () => {
         const notifications = JSON.parse(localStorage.getItem('mockbee_notifications') || '[]');
-        const isUnread = localStorage.getItem('mockbee_notif_unread') === 'true';
-        
-        if (isUnread && notifDot) notifDot.style.display = 'block';
-        else if (notifDot) notifDot.style.display = 'none';
+        syncNotifDot();
 
         let htmlContent = '<div style="text-align: left; padding: 10px;">';
         if (notifications.length === 0) {
@@ -221,8 +253,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.addNotification = (msg) => {
         const notifications = JSON.parse(localStorage.getItem('mockbee_notifications') || '[]');
-        // Don't duplicate recently added same msg (especially expiry alerts)
-        if (notifications.length > 0 && notifications[0].msg === msg) return;
+        // Prevent any duplicate notifications from being added (solves red dot on refresh)
+        if (notifications.some(n => n.msg === msg)) return;
         
         notifications.unshift({ msg, time: new Date().toISOString() });
         localStorage.setItem('mockbee_notifications', JSON.stringify(notifications));
@@ -235,31 +267,86 @@ document.addEventListener('DOMContentLoaded', () => {
         const isSubbed = localStorage.getItem('mockbee_subscribed') === 'true';
         if (!isSubbed) return;
 
-        // Get/Set mock expiry date (7 days from now if not exists)
-        let expiryDate = localStorage.getItem('mockbee_subscription_expiry');
-        if (!expiryDate) {
-            const future = new Date();
-            future.setDate(future.getDate() + 7); 
-            expiryDate = future.toISOString();
-            localStorage.setItem('mockbee_subscription_expiry', expiryDate);
+        let expiryDate = localStorage.getItem('mockbee_sub_end_date');
+        
+        const legacyExpiry = localStorage.getItem('mockbee_subscription_expiry');
+        if (legacyExpiry && !expiryDate) {
+            expiryDate = legacyExpiry;
+            localStorage.setItem('mockbee_sub_end_date', legacyExpiry);
+            localStorage.removeItem('mockbee_subscription_expiry');
         }
+
+        if (!expiryDate) return; 
 
         const today = new Date();
         const expiry = new Date(expiryDate);
+        
+        if (isNaN(expiry.getTime())) return;
+
         const diffTime = expiry - today;
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
+        // 5-Day Expiry Notification Logic (Every Day)
         if (diffDays > 0 && diffDays <= 5) {
-            window.addNotification(`Action Required: Your subscription ends in ${diffDays} day${diffDays > 1 ? 's' : ''}.`);
+            const todayStr = today.toISOString().split('T')[0];
+            const lastNotifDate = localStorage.getItem('mockbee_last_expiry_notif_date');
+            
+            if (lastNotifDate !== todayStr) {
+                window.addNotification(`Action Required: Your subscription ends in ${diffDays} day${diffDays > 1 ? 's' : ''}. Renew now to keep access.`);
+                localStorage.setItem('mockbee_last_expiry_notif_date', todayStr);
+            }
         } else if (diffDays <= 0) {
             // Subscription expired logic
             localStorage.setItem('mockbee_subscribed', 'false');
+            localStorage.removeItem('mockbee_subscribed_plan');
+            localStorage.removeItem('mockbee_sub_end_date');
+            
+            const email = localStorage.getItem('mockbee_user_email');
+            if (email) {
+                const accounts = JSON.parse(localStorage.getItem('mockbee_accounts') || '{}');
+                if (accounts[email]) {
+                    accounts[email].subscribed = false;
+                    localStorage.setItem('mockbee_accounts', JSON.stringify(accounts));
+                }
+            }
+
             window.addNotification("Your MockBee Pro subscription has expired.");
+            updateSubUI(false); 
         }
     }
 
-    // Run expiry check
+    // 7.2 Event-Based Notifications (Welcome & Subscription)
+    function checkEventNotifications() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const isNewUser = urlParams.get('source') === 'new_user';
+        const userName = localStorage.getItem('mockbee_user_name') || 'Success Seeker';
+        
+        // A. Welcome Notification
+        if (isNewUser && localStorage.getItem('mockbee_welcome_notif_done') !== 'true') {
+            window.addNotification(`Welcome, ${userName}! Thanks for signing up. Your journey starts here.`);
+            localStorage.setItem('mockbee_welcome_notif_done', 'true');
+        }
+
+        // B. Subscription Success & Upgrade Notification
+        const isSubbed = localStorage.getItem('mockbee_subscribed') === 'true';
+        const lastKnownSub = localStorage.getItem('mockbee_last_known_sub') === 'true';
+        const planKey = localStorage.getItem('mockbee_subscribed_plan');
+        const lastKnownPlan = localStorage.getItem('mockbee_last_known_plan');
+
+        // Trigger if they just subscribed OR if they changed plans (Pro -> Elite)
+        if (isSubbed && (!lastKnownSub || (planKey !== lastKnownPlan && lastKnownPlan))) {
+            const planName = (planKey === 'pro' || planKey === 'elite_plan') ? 'Elite' : 'Pro';
+            window.addNotification(`Congratulations! You are now a ${planName} Member. Premium features unlocked.`);
+        }
+        
+        // Sync sub state and plan for next check
+        localStorage.setItem('mockbee_last_known_sub', isSubbed ? 'true' : 'false');
+        if (planKey) localStorage.setItem('mockbee_last_known_plan', planKey);
+    }
+
+    // Run notification checks
     checkSubscriptionExpiry();
+    checkEventNotifications();
 
     // 8. Welcome Email Service (Pure Fetch Edition)
     const needsEmail = localStorage.getItem('mockbee_send_welcome_email') === 'true';
@@ -416,7 +503,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 11. Sync Database History
     const userEmailSync = localStorage.getItem('mockbee_user_email');
     if (userEmailSync) {
-        fetch(`https://mockbee.onrender.com/api/interview/history?email=${encodeURIComponent(userEmailSync)}`)
+        fetch(`${API_BASE}/api/interview/history?email=${encodeURIComponent(userEmailSync)}`)
         .then(res => res.json())
         .then(data => {
             if (data.status === 'success' && data.history && data.history.length > 0) {
@@ -444,6 +531,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     renderActivities();
     updateDashboardStats(); // Initial call
+    syncNotifDot(); // Sync notification dot state on load
 });
 
 // Logout Logic with SweetAlert2
@@ -483,9 +571,21 @@ document.querySelector('.btn-logout')?.addEventListener('click', () => {
             localStorage.removeItem('mockbee_user_name');
             localStorage.removeItem('mockbee_user_email');
             localStorage.removeItem('mockbee_subscribed');
+            localStorage.removeItem('mockbee_subscribed_plan');
+            localStorage.removeItem('mockbee_sub_start_date');
+            localStorage.removeItem('mockbee_sub_end_date');
+            localStorage.removeItem('mockbee_sub_billing');
             localStorage.removeItem('mockbee_last_page');
             localStorage.removeItem('mockbee_interviews');
             localStorage.removeItem('mockbee_activities');
+            localStorage.removeItem('mockbee_badges');
+            localStorage.removeItem('mockbee_notifications');
+            localStorage.removeItem('mockbee_notif_unread');
+            localStorage.removeItem('mockbee_subscription_expiry');
+            localStorage.removeItem('mockbee_welcome_notif_done');
+            localStorage.removeItem('mockbee_last_known_sub');
+            localStorage.removeItem('mockbee_last_known_plan');
+            localStorage.removeItem('mockbee_last_expiry_notif_date');
 
             // Show success alert
             Swal.fire({

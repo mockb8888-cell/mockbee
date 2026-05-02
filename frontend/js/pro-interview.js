@@ -10,19 +10,8 @@ let currentQuestionIndex = 0;
 let questions = [];
 let roleName = "General Role";
 let isInterviewComplete = false;
+let isAwaitingAnswer = false; // New flag to prevent early answers or double submits
 let interviewTranscript = [];
-
-const PHASES = [
-    "self_intro",
-    "projects_skills",
-    "technical",
-    "optimization",
-    "behavioural",
-    "hr_logistics"
-];
-let currentPhaseIndex = 0;
-let questionCount = 0;
-let targetTotalQuestions = 22;
 
 // AI Feedback Data
 const FEEDBACK_METADATA = {
@@ -73,19 +62,37 @@ document.addEventListener('DOMContentLoaded', () => {
     const roleTitleElem = document.getElementById('role-title');
     if (roleTitleElem) roleTitleElem.innerText = roleName;
 
+    // 2. Load Questions for Role from PRO_QUESTION_BANK
+    // Find matching key
+    const foundKey = Object.keys(PRO_QUESTION_BANK).find(key => roleName.toLowerCase().includes(key.toLowerCase()));
+    let baseQuestions = foundKey ? PRO_QUESTION_BANK[foundKey] : PRO_QUESTION_BANK["Python Developer"];
+
+    // USER OVERRIDE: Kids and Communication cards only get 8 questions in dashboard
+    const limitedRoles = ["Python Kids Level", "HTML Kids Level", "CSS Kids Level", "Communication Cards"];
+    if (limitedRoles.includes(roleName)) {
+        questions = baseQuestions.slice(0, 8);
+    } else {
+        questions = baseQuestions;
+    }
+
     // Update UI Total
     const totalElem = document.getElementById('total-q');
-    if (totalElem) totalElem.innerText = "~" + targetTotalQuestions;
+    if (totalElem) totalElem.innerText = questions.length;
 
     // 3. Setup UI
     const userInput = document.getElementById('user-input');
     const submitBtn = document.getElementById('submit-btn');
 
     // 4. Start Interview
-    sendAIMessage(`Welcome to your **${roleName}** Pro Session. This is an in-depth structured mock interview. Let's begin.`);
+    // Initially disable input until first question is ready
+    if (userInput) userInput.disabled = true;
+    if (submitBtn) submitBtn.disabled = true;
+
+    sendAIMessage(`Welcome to your **${roleName}** Pro Session. This is an in-depth assessment with over 50 scenarios. Let's begin.`);
 
     setTimeout(() => {
-        triggerAI("Please begin the interview.");
+        updateProgress(); // Initialize progress UI
+        askNextQuestion();
     }, 2000);
 
     // 5. Handle Submit
@@ -106,25 +113,29 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function handleUserSubmit() {
-    if (isInterviewComplete) return;
+    if (isInterviewComplete || !isAwaitingAnswer) return;
 
     const userInput = document.getElementById('user-input');
+    const submitBtn = document.getElementById('submit-btn');
     const message = userInput.value.trim();
 
     if (message === "") return;
 
+    // Disable input immediately to prevent double submission/out-of-order questions
+    isAwaitingAnswer = false;
+    userInput.disabled = true;
+    submitBtn.disabled = true;
     userInput.value = "";
     addUserMessage(message);
 
-    interviewTranscript.push({
-        role: "user",
-        content: message
-    });
+    if (questions[currentQuestionIndex]) {
+        interviewTranscript.push({
+            question: questions[currentQuestionIndex],
+            answer: message
+        });
+    }
 
-    triggerAI(message);
-}
-
-function triggerAI(userMessage) {
+    // Provide typing indicator
     const chatBox = document.getElementById('chat-box');
     const tempDiv = document.createElement('div');
     tempDiv.className = "message message--ai";
@@ -133,20 +144,21 @@ function triggerAI(userMessage) {
     chatBox.appendChild(tempDiv);
     chatBox.scrollTo({ top: chatBox.scrollHeight, behavior: 'smooth' });
 
-    if (userMessage === "Please begin the interview." && interviewTranscript.length === 0) {
-        interviewTranscript.push({ role: "user", content: userMessage });
-    }
+    // Build history for backend API
+    const history = [];
+    interviewTranscript.forEach(t => {
+        history.push({ role: "assistant", content: t.question });
+        if (t.answer) history.push({ role: "user", content: t.answer });
+    });
 
-    const currentPhase = PHASES[currentPhaseIndex] || "hr_logistics";
-
-    fetch('https://mockbee.onrender.com/api/interview/chat', {
+    fetch(`${API_BASE}/api/interview/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             role: roleName,
             level: "Senior", // Pro level
-            history: interviewTranscript,
-            phase: currentPhase
+            history: history,
+            phase: "pro_feedback"
         })
     })
     .then(response => response.json())
@@ -154,40 +166,28 @@ function triggerAI(userMessage) {
         const ind = document.getElementById('typing-indicator');
         if (ind) ind.remove();
 
-        let aiReply = data.reply || "Could you elaborate on that?";
+        currentQuestionIndex++;
         
-        let phaseAdvance = false;
-        if (aiReply.includes("[PHASE_COMPLETE]")) {
-            aiReply = aiReply.replace("[PHASE_COMPLETE]", "").trim();
-            phaseAdvance = true;
-        }
-
-        let isDone = false;
-        if (aiReply.includes("[INTERVIEW_COMPLETE]")) {
-            aiReply = aiReply.replace("[INTERVIEW_COMPLETE]", "").trim();
-            isDone = true;
-        }
-
-        interviewTranscript.push({ role: "assistant", content: aiReply });
-        sendAIMessage(aiReply);
-        
-        questionCount++;
-        
-        // Show Quit & Complete button after 5 questions
-        if (questionCount >= 5) {
+        // Show Quit & Complete button after 10 questions
+        if (currentQuestionIndex >= 10) {
             const quitBtn = document.getElementById('quit-complete-btn');
             if (quitBtn) quitBtn.style.display = 'block';
         }
 
-        updateProgress();
+        if (currentQuestionIndex < questions.length) {
+            const feedback = data.reply || "Good point. Let's move on.";
+            sendAIMessage(feedback, true);
 
-        if (phaseAdvance) {
-            currentPhaseIndex++;
-        }
-
-        if (isDone || currentPhaseIndex >= PHASES.length) {
+            setTimeout(() => {
+                updateProgress();
+                askNextQuestion();
+            }, 1800);
+        } else {
+            if (isInterviewComplete) return;
             isInterviewComplete = true;
-            setTimeout(showResultsButton, 1500);
+            updateProgress();
+            sendAIMessage(data.reply || "Masterful performance. You have completed the full assessment. Your report is now ready.", false);
+            setTimeout(showResultsButton, 1000);
         }
     })
     .catch(err => {
@@ -198,7 +198,50 @@ function triggerAI(userMessage) {
     });
 }
 
-// (Removed static question tracking and dynamic feedback overrides to match phased model)
+function generateDynamicFeedback(answer, question) {
+    const userAns = answer.toLowerCase();
+    const currentRole = roleName || "Developer";
+    const wordCount = answer.trim().split(/\s+/).length;
+
+    let roleKeywords = [];
+    for (const key in FEEDBACK_METADATA) {
+        if (currentRole.toLowerCase().includes(key.toLowerCase())) {
+            roleKeywords = FEEDBACK_METADATA[key];
+            break;
+        }
+    }
+
+    const matchedKeywords = roleKeywords.filter(kw => userAns.includes(kw.toLowerCase()));
+
+    if (wordCount < 6 || (matchedKeywords.length === 0 && wordCount < 15)) {
+        return TOUGH_FEEDBACK[Math.floor(Math.random() * TOUGH_FEEDBACK.length)];
+    }
+
+    if (matchedKeywords.length > 0) {
+        const randomTemplate = FEEDBACK_TEMPLATES[Math.floor(Math.random() * FEEDBACK_TEMPLATES.length)];
+        const featuredKeyword = matchedKeywords[0];
+        return randomTemplate.replace("{keyword}", featuredKeyword).replace("{role}", currentRole);
+    }
+
+    return GENERIC_FEEDBACK[Math.floor(Math.random() * GENERIC_FEEDBACK.length)];
+}
+
+function askNextQuestion() {
+    if (questions && currentQuestionIndex < questions.length) {
+        const qText = `**Q${currentQuestionIndex + 1}:** ${questions[currentQuestionIndex]}`;
+        sendAIMessage(qText);
+        
+        // Re-enable input now that a question is on screen
+        isAwaitingAnswer = true;
+        const userInput = document.getElementById('user-input');
+        const submitBtn = document.getElementById('submit-btn');
+        if (userInput) {
+            userInput.disabled = false;
+            userInput.focus();
+        }
+        if (submitBtn) submitBtn.disabled = false;
+    }
+}
 
 function sendAIMessage(text, isFeedback = false) {
     const chatBox = document.getElementById('chat-box');
@@ -238,9 +281,10 @@ function addUserMessage(text) {
 function updateProgress() {
     const currentQ = document.getElementById('current-q');
     const fill = document.querySelector('.progress-bar-fill');
-    
-    currentQ.innerText = questionCount;
-    const percent = Math.min((questionCount / targetTotalQuestions) * 100, 100);
+    if (!questions.length) return;
+    const displayIndex = Math.min(currentQuestionIndex + 1, questions.length);
+    currentQ.innerText = displayIndex;
+    const percent = (displayIndex / questions.length) * 100;
     fill.style.width = percent + "%";
 }
 
@@ -291,11 +335,10 @@ function showResultsButton() {
 
         // Save session data to localStorage
         const sessionData = {
-            id: Date.now(),
             role: roleName,
             transcript: interviewTranscript,
             date: new Date().toLocaleDateString(),
-            totalQuestions: questionCount,
+            totalQuestions: questions.length,
             isPro: true
         };
 

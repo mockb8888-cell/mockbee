@@ -34,15 +34,28 @@ def signup(req: SignupRequest):
     users.update_one({"_id": req.email}, {"$set": {"password": req.password}})
     return {"status": "success", "message": "Account created"}
 
+# ── Admin credentials (hardcoded) ─────────────────────────────────────────────
+ADMIN_EMAIL = "admin"
+ADMIN_PASSWORD = "mockb@urban"
+
 @app.post("/api/login")
 def login(req: LoginRequest):
+    # Admin login check
+    if req.email == ADMIN_EMAIL and req.password == ADMIN_PASSWORD:
+        return {"status": "success", "name": "Admin", "email": ADMIN_EMAIL, "is_admin": True}
+
     users = db._col("users")
-    user = users.find_one({"_id": req.email})
+    user = users.find_one({
+        "$or": [
+            {"_id": req.email},
+            {"name": {"$regex": f"^{req.email}$", "$options": "i"}}
+        ]
+    })
     if not user:
-        raise HTTPException(status_code=400, detail="No account found with this email.")
+        raise HTTPException(status_code=400, detail="No account found with this email or username.")
     if user.get("password") != req.password:
         raise HTTPException(status_code=400, detail="Incorrect password.")
-    return {"status": "success", "name": user.get("name"), "email": user.get("_id")}
+    return {"status": "success", "name": user.get("name"), "email": user.get("_id"), "is_admin": False}
 
 class ChatRequest(BaseModel):
     role: str
@@ -53,11 +66,26 @@ class ChatRequest(BaseModel):
 @app.post("/api/interview/chat")
 def interview_chat(req: ChatRequest):
     phase = req.phase
-    if phase not in mocker.PHASES:
-        phase = "self_intro"
-    
-    q_target = mocker.PHASE_Q_TARGETS[phase]
-    system_prompt = mocker.PHASE_PROMPTS[phase].format(role=req.role, level=req.level, q_target=q_target)
+    if phase == "pro_feedback":
+        system_prompt = f"""You are an expert technical interviewer providing concise feedback.
+Role: {req.role} | Level: {req.level}
+
+The candidate has just answered a technical or behavioural question.
+Your job:
+- Provide a brief 1-2 sentence feedback on their last answer.
+- Praise strong points or highlight what is missing.
+- CRITICAL: DO NOT ask any new questions. ONLY provide feedback on their answer.
+"""
+    else:
+        if phase not in mocker.PHASES:
+            phase = "self_intro"
+        
+        q_target = mocker.PHASE_Q_TARGETS[phase]
+        system_prompt = mocker.PHASE_PROMPTS[phase].format(role=req.role, level=req.level, q_target=q_target)
+        
+        if phase != "self_intro":
+            system_prompt += "\n\nCRITICAL RULE: DO NOT ask the candidate to introduce themselves or ask for their background. That was already done. Focus ONLY on your current phase."
+
     try:
         reply = mocker.ai_chat(system_prompt, req.history)
         return {"status": "success", "reply": reply}
@@ -110,6 +138,28 @@ def save_interview(req: SaveSessionRequest):
 def get_user_history(email: str):
     docs = list(db._col("interview_sessions").find({"user_email": email}, {"_id": 0}).sort("saved_at", -1))
     return {"status": "success", "history": docs}
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  ADMIN ENDPOINTS
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/admin/users")
+def admin_get_all_users(key: str):
+    """Returns all registered users. Requires admin key for access."""
+    if key != ADMIN_PASSWORD:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    users = list(db._col("users").find({}, {"password": 0}))
+    for u in users:
+        u["email"] = u.pop("_id")
+    return {"status": "success", "users": users}
+
+@app.get("/api/admin/sessions")
+def admin_get_all_sessions(key: str):
+    """Returns all interview sessions across all users. Requires admin key."""
+    if key != ADMIN_PASSWORD:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    docs = list(db._col("interview_sessions").find({}, {"_id": 0}).sort("saved_at", -1))
+    return {"status": "success", "sessions": docs}
 
 if __name__ == "__main__":
     import uvicorn

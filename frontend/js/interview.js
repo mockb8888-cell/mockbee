@@ -1,41 +1,87 @@
 /* ============================================
-   MockBee - AI Interview Logic (Phased)
+   MockBee - AI Interview Logic (Phase-Driven)
+   ============================================
+   Uses mocker.py's 6-phase structured interview
+   system. The AI generates all questions and
+   feedback dynamically via the backend API.
    ============================================ */
 
-let roleName = "General Role";
-let isInterviewComplete = false;
-let interviewTranscript = [];
-let currentMode = "standard";
-
+// ── Phase Configuration (mirrors mocker.py) ──
 const PHASES = [
     "self_intro",
     "projects_skills",
     "technical",
     "optimization",
     "behavioural",
-    "hr_logistics"
+    "hr_logistics",
 ];
-let currentPhaseIndex = 0;
-let questionCount = 0;
-let targetTotalQuestions = 22; // rough estimate
 
+const PHASE_LABELS = {
+    self_intro:      "📋 Phase 1 — Self Introduction",
+    projects_skills: "🛠 Phase 2 — Projects & Skills",
+    technical:       "💻 Phase 3 — Technical Questions",
+    optimization:    "⚡ Phase 4 — Optimization & Problem Solving",
+    behavioural:     "🧠 Phase 5 — Behavioural Questions",
+    hr_logistics:    "📝 Phase 6 — HR & Logistics",
+};
+
+const PHASE_Q_TARGETS = {
+    self_intro: 2,
+    projects_skills: 3,
+    technical: 4,
+    optimization: 3,
+    behavioural: 5,
+    hr_logistics: 5,
+};
+
+// ── Role Icon Mapping ──
+const ROLE_ICON_MAPPING = {
+    "Python": "fab fa-python",
+    "Frontend": "fas fa-code",
+    "Backend": "fas fa-server",
+    "ML": "fas fa-brain",
+    "Data Scientist": "fas fa-chart-pie",
+    "Cloud": "fas fa-cloud",
+    "DevOps": "fas fa-infinity",
+    "Cybersecurity": "fas fa-user-shield",
+    "Network": "fas fa-network-wired",
+    "System Architect": "fas fa-sitemap",
+    "QA": "fas fa-vial",
+    "Mobile": "fas fa-mobile-screen-button",
+    "Testing": "fas fa-vial",
+    "AWS": "fab fa-aws",
+    "Communication": "fas fa-comments",
+};
+
+// ── State ──
+let roleName = "General Role";
+let currentPhaseIndex = 0;
+let questionCount = 0;       // total questions asked across all phases
+let totalQuestions = 22;     // sum of all PHASE_Q_TARGETS
+let isInterviewComplete = false;
+let isAwaitingAnswer = false;
+let isAIProcessing = false;
+let interviewTranscript = [];
+let conversationHistory = []; // full chat history sent to backend
+let currentMode = "standard";
+let lastAIQuestion = ""; // tracks the most recent AI question for accurate transcript
+
+// ── Compute total question count ──
+totalQuestions = Object.values(PHASE_Q_TARGETS).reduce((a, b) => a + b, 0);
+
+// ── Web Speech API for voice ──
+let recognition = null;
+let isListening = false;
+let synthUtterance = null;
+
+// ── Init ──
 document.addEventListener('DOMContentLoaded', () => {
-    // 1. Get Role and Mode from URL
     const urlParams = new URLSearchParams(window.location.search);
     const mode = urlParams.get('mode') || "standard";
     roleName = urlParams.get('role') || "System Architect";
     currentMode = mode;
 
-    // Apply High Intensity Theme if applicable
-    if (mode === '5-min' || mode === 'rapid') {
-        const timerBox = document.getElementById('timer-box');
-        if (timerBox) {
-            timerBox.classList.remove('hidden');
-            startCountdown(5 * 60); // 5 minutes in seconds
-        }
-    }
-
-    // Update Heading based on Mode
+    // Set header title
     const roleTitleElem = document.getElementById('role-title');
     const modeBadgeElem = document.querySelector('.role-info span');
 
@@ -56,30 +102,24 @@ document.addEventListener('DOMContentLoaded', () => {
         if (modeBadgeElem) modeBadgeElem.innerText = "AI Mock Interview";
     }
 
+    // Apply mode-specific timer
+    if (mode === '5-min' || mode === 'rapid') {
+        const timerBox = document.getElementById('timer-box');
+        if (timerBox) {
+            timerBox.classList.remove('hidden');
+            startCountdown(5 * 60);
+        }
+    }
+
+    // 1-q dashboard embed class
     if (currentMode === '1-q' && window.self !== window.top) {
         document.body.classList.add('mode-1-q-dashboard');
     }
 
-    document.getElementById('total-q').innerText = "~" + targetTotalQuestions;
-
-    const ROLE_ICON_MAPPING = {
-        "Python": "fab fa-python",
-        "Frontend": "fas fa-code",
-        "Backend": "fas fa-server",
-        "ML": "fas fa-brain",
-        "Data Scientist": "fas fa-chart-pie",
-        "Cloud": "fas fa-cloud",
-        "DevOps": "fas fa-infinity",
-        "Cybersecurity": "fas fa-user-shield",
-        "Network": "fas fa-network-wired",
-        "System Architect": "fas fa-sitemap",
-        "QA": "fas fa-vial",
-        "Mobile": "fas fa-mobile-screen-button",
-    };
-
+    // Set role icon
     const headerIcon = document.getElementById('header-role-icon');
     if (headerIcon) {
-        let iconClass = "fas fa-globe"; // Default
+        let iconClass = "fas fa-globe";
         for (const [key, icon] of Object.entries(ROLE_ICON_MAPPING)) {
             if (roleName.toLowerCase().includes(key.toLowerCase())) {
                 iconClass = icon;
@@ -89,15 +129,15 @@ document.addEventListener('DOMContentLoaded', () => {
         headerIcon.className = iconClass;
     }
 
+    // Update progress display
+    document.getElementById('total-q').innerText = totalQuestions;
+    updateProgress();
+
+    // Setup controls
     const userInput = document.getElementById('user-input');
     const submitBtn = document.getElementById('submit-btn');
-
-    // Start Interview with an initial API trigger
-    sendAIMessage(`Welcome to your **${roleName}** interview. I'm your AI interviewer for today. Let's begin.`);
-    
-    setTimeout(() => {
-        triggerAI("Please begin the interview.");
-    }, 1500);
+    if (userInput) userInput.disabled = true;
+    if (submitBtn) submitBtn.disabled = true;
 
     submitBtn.addEventListener('click', handleUserSubmit);
     userInput.addEventListener('keypress', (e) => {
@@ -107,50 +147,224 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Setup voice
     setupVoiceRecognition();
+
+    // Start interview — show welcome + phase label + first AI question
+    startInterview();
 });
 
-function startCountdown(seconds) {
-    const display = document.getElementById('timer-display');
-    const timerBox = document.getElementById('timer-box');
-    let timeLeft = seconds;
 
-    const timerInterval = setInterval(() => {
-        const mins = Math.floor(timeLeft / 60);
-        const secs = timeLeft % 60;
-        if (display) display.innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+// ═══════════════════════════════════════════════════════
+//  INTERVIEW FLOW
+// ═══════════════════════════════════════════════════════
 
-        if (timeLeft <= 60) {
-            if (timerBox) timerBox.classList.add('warning');
-        }
+function startInterview() {
+    // Welcome message
+    sendAIMessage(`Welcome to your **${roleName}** interview. I'm your AI interviewer for today. We'll go through a structured 6-phase interview. Let's begin!`);
 
-        if (timeLeft <= 0) {
-            clearInterval(timerInterval);
-            handleTimeUp();
-        }
-        timeLeft--;
-    }, 1000);
+    // Show phase label
+    setTimeout(() => {
+        showPhaseLabel(PHASES[currentPhaseIndex]);
+
+        // Ask AI for first question
+        setTimeout(() => {
+            requestAIQuestion();
+        }, 800);
+    }, 2000);
 }
 
-function handleTimeUp() {
-    if (isInterviewComplete) return;
-    if (typeof Swal !== 'undefined') {
-        Swal.fire({
-            title: 'Time is up!',
-            text: "Let's wrap up this drill session.",
-            icon: 'info',
-            confirmButtonColor: '#1a1a1a',
-            confirmButtonText: 'Got it',
-            background: '#ffffff',
-            color: '#1a1a1a',
-            backdrop: `rgba(0,0,0,0.4)`
-        });
-    } else {
-        alert("Time is up! Let's wrap up this drill.");
+function showPhaseLabel(phase) {
+    const chatBox = document.getElementById('chat-box');
+    const phaseDiv = document.createElement('div');
+    phaseDiv.className = "message phase-label-msg";
+    phaseDiv.innerHTML = `<div class="phase-label-bubble">${PHASE_LABELS[phase]}</div>`;
+    chatBox.appendChild(phaseDiv);
+    scrollToBottom();
+}
+
+function requestAIQuestion() {
+    // Show typing indicator
+    showTypingIndicator();
+
+    const currentPhase = PHASES[currentPhaseIndex];
+
+    fetch(`${API_BASE}/api/interview/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            role: roleName,
+            level: "Mid-level",
+            history: conversationHistory,
+            phase: currentPhase,
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        removeTypingIndicator();
+
+        const reply = data.reply || "Please tell me about yourself.";
+
+        // Add to conversation history
+        conversationHistory.push({ role: "assistant", content: reply });
+
+        // Check for markers
+        if (reply.includes("[INTERVIEW_COMPLETE]")) {
+            const cleanReply = reply.replace("[INTERVIEW_COMPLETE]", "").trim();
+            sendAIMessage(cleanReply);
+            speakText(cleanReply);
+            finishInterview();
+            return;
+        }
+
+        if (reply.includes("[PHASE_COMPLETE]")) {
+            const cleanReply = reply.replace("[PHASE_COMPLETE]", "").trim();
+            sendAIMessage(cleanReply);
+            speakText(cleanReply);
+
+            // Advance phase
+            currentPhaseIndex++;
+            if (currentPhaseIndex < PHASES.length) {
+                setTimeout(() => {
+                    showPhaseLabel(PHASES[currentPhaseIndex]);
+                    setTimeout(() => requestAIQuestion(), 1000);
+                }, 2000);
+            } else {
+                finishInterview();
+            }
+            return;
+        }
+
+        // Normal question — display and enable input
+        questionCount++;
+        updateProgress();
+        lastAIQuestion = reply; // save for transcript
+        sendAIMessage(`**Q${questionCount}:** ${reply}`);
+        speakText(reply);
+        enableInput();
+    })
+    .catch(err => {
+        removeTypingIndicator();
+        console.error("AI Error:", err);
+        sendAIMessage("⚠️ Network error. Could not reach the AI backend. Please check your connection.");
+        enableInput(); // let them retry
+    });
+}
+
+function handleUserSubmit() {
+    if (isInterviewComplete || !isAwaitingAnswer || isAIProcessing) return;
+
+    const userInput = document.getElementById('user-input');
+    const message = userInput.value.trim();
+    if (message === "") return;
+
+    // Stop voice recognition if active
+    if (isListening && recognition) {
+        isListening = false;
+        recognition.stop();
     }
-    isInterviewComplete = true;
-    showResultsButton();
+
+    // Disable input
+    isAwaitingAnswer = false;
+    isAIProcessing = true;
+    disableInput();
+    userInput.value = "";
+
+    // Add user message to chat
+    addUserMessage(message);
+
+    // Add to conversation history
+    conversationHistory.push({ role: "user", content: message });
+
+    // Save to transcript
+    interviewTranscript.push({
+        question: lastAIQuestion || `[${PHASE_LABELS[PHASES[currentPhaseIndex]]}]`,
+        answer: message,
+        phase: PHASES[currentPhaseIndex]
+    });
+
+    // Request AI response (feedback + next question)
+    showTypingIndicator();
+
+    const currentPhase = PHASES[currentPhaseIndex];
+
+    fetch(`${API_BASE}/api/interview/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            role: roleName,
+            level: "Mid-level",
+            history: conversationHistory,
+            phase: currentPhase,
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        removeTypingIndicator();
+        isAIProcessing = false;
+
+        const reply = data.reply || "Thank you.";
+
+        // Add to conversation history
+        conversationHistory.push({ role: "assistant", content: reply });
+
+        // Check for [INTERVIEW_COMPLETE]
+        if (reply.includes("[INTERVIEW_COMPLETE]")) {
+            const cleanReply = reply.replace("[INTERVIEW_COMPLETE]", "").trim();
+            sendAIMessage(cleanReply, true);
+            speakText(cleanReply);
+            finishInterview();
+            return;
+        }
+
+        // Check for [PHASE_COMPLETE]
+        if (reply.includes("[PHASE_COMPLETE]")) {
+            const cleanReply = reply.replace("[PHASE_COMPLETE]", "").trim();
+            sendAIMessage(cleanReply, true);
+            speakText(cleanReply);
+
+            currentPhaseIndex++;
+            if (currentPhaseIndex < PHASES.length) {
+                setTimeout(() => {
+                    showPhaseLabel(PHASES[currentPhaseIndex]);
+                    setTimeout(() => requestAIQuestion(), 1000);
+                }, 2000);
+            } else {
+                finishInterview();
+            }
+            return;
+        }
+
+        // Normal reply — feedback + next question embedded
+        // The AI gives feedback and asks the next question in one message
+        questionCount++;
+        updateProgress();
+        lastAIQuestion = reply; // save for next transcript entry
+        sendAIMessage(reply, true, questionCount);
+        speakText(reply);
+        enableInput();
+    })
+    .catch(err => {
+        removeTypingIndicator();
+        isAIProcessing = false;
+        console.error("AI Error:", err);
+        sendAIMessage("⚠️ Network error. Please check your connection and try again.");
+        enableInput();
+    });
 }
+
+function finishInterview() {
+    if (isInterviewComplete) return;
+    isInterviewComplete = true;
+    updateProgress();
+    disableInput();
+    setTimeout(showResultsButton, 1200);
+}
+
+
+// ═══════════════════════════════════════════════════════
+//  VOICE — Web Speech API
+// ═══════════════════════════════════════════════════════
 
 function setupVoiceRecognition() {
     const micBtn = document.querySelector('.mic-btn');
@@ -159,35 +373,35 @@ function setupVoiceRecognition() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
-        if (micBtn) micBtn.style.display = 'none';
+        if (micBtn) micBtn.title = "Voice not supported in this browser";
         return;
     }
 
+    // Recording indicator
     let indicator = document.querySelector('.recording-indicator');
     if (!indicator && inputContainer) {
         indicator = document.createElement('div');
         indicator.className = 'recording-indicator';
-        indicator.innerHTML = '<i class="fas fa-circle"></i> Live Recording...';
+        indicator.innerHTML = '<i class="fas fa-circle"></i> Listening...';
         inputContainer.style.position = 'relative';
         inputContainer.appendChild(indicator);
     }
 
-    const recognition = new SpeechRecognition();
+    recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = 'en-US';
 
-    let isListening = false;
-    let finalTranscript = '';
-
     micBtn.addEventListener('click', (e) => {
         e.preventDefault();
+
+        if (!isAwaitingAnswer) return; // Don't listen if not waiting for answer
+
         if (isListening) {
             isListening = false;
             recognition.stop();
         } else {
             isListening = true;
-            finalTranscript = userInput.value ? userInput.value + ' ' : '';
             recognition.start();
         }
     });
@@ -195,23 +409,37 @@ function setupVoiceRecognition() {
     recognition.onstart = () => {
         micBtn.classList.add('active');
         if (indicator) indicator.classList.add('active');
-        userInput.placeholder = "Listening... Speak naturally.";
+        userInput.placeholder = "🎙️ Listening... Speak your answer naturally.";
     };
 
     recognition.onresult = (event) => {
-        const transcript = Array.from(event.results)
-            .map(result => result[0])
-            .map(result => result.transcript)
-            .join('');
+        let interimTranscript = '';
+        let finalTranscript = '';
 
-        userInput.value = transcript;
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcript = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+                finalTranscript += transcript + ' ';
+            } else {
+                interimTranscript += transcript;
+            }
+        }
+
+        // Append final transcript; show interim as preview
+        if (finalTranscript) {
+            userInput.value = (userInput.value + finalTranscript).trim();
+        }
+        // Visual hint for interim
+        if (interimTranscript && !finalTranscript) {
+            userInput.placeholder = `🎙️ "${interimTranscript}"`;
+        }
+
         userInput.scrollLeft = userInput.scrollWidth;
-        userInput.dispatchEvent(new Event('input', { bubbles: true }));
     };
 
     recognition.onend = () => {
         if (isListening) {
-            recognition.start();
+            try { recognition.start(); } catch(e) {} // Auto-restart
         } else {
             micBtn.classList.remove('active');
             if (indicator) indicator.classList.remove('active');
@@ -221,117 +449,77 @@ function setupVoiceRecognition() {
 
     recognition.onerror = (event) => {
         if (event.error === 'no-speech') return;
+        if (event.error === 'aborted') return;
         console.error("Speech Recognition Error:", event.error);
         isListening = false;
-        recognition.stop();
+        try { recognition.stop(); } catch(e) {}
     };
 }
 
-function handleUserSubmit() {
-    if (isInterviewComplete) return;
+/**
+ * Text-to-Speech: Read AI questions aloud
+ */
+function speakText(text) {
+    if (!('speechSynthesis' in window)) return;
 
-    const userInput = document.getElementById('user-input');
-    const message = userInput.value.trim();
+    // Cancel any ongoing speech
+    window.speechSynthesis.cancel();
 
-    if (message === "") return;
+    // Clean up text — remove markdown, markers
+    let clean = text
+        .replace(/\*\*(.*?)\*\*/g, '$1')
+        .replace(/\[PHASE_COMPLETE\]/g, '')
+        .replace(/\[INTERVIEW_COMPLETE\]/g, '')
+        .replace(/Q\d+:/g, '')
+        .trim();
 
-    userInput.value = "";
-    addUserMessage(message);
+    if (!clean) return;
 
-    interviewTranscript.push({
-        role: "user",
-        content: message
-    });
+    const utterance = new SpeechSynthesisUtterance(clean);
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    utterance.volume = 0.9;
+    utterance.lang = 'en-US';
 
-    triggerAI(message);
+    // Try to pick a natural voice
+    const voices = window.speechSynthesis.getVoices();
+    const preferred = voices.find(v =>
+        v.name.includes('Google') || v.name.includes('Microsoft') || v.name.includes('Natural')
+    );
+    if (preferred) utterance.voice = preferred;
+
+    window.speechSynthesis.speak(utterance);
 }
 
-function triggerAI(userMessage) {
-    const chatBox = document.getElementById('chat-box');
-    const tempDiv = document.createElement('div');
-    tempDiv.className = "message message--ai";
-    tempDiv.id = "typing-indicator";
-    tempDiv.innerHTML = `<div class="ai-bubble"><i class="fas fa-spinner fa-spin"></i> AI is thinking...</div>`;
-    chatBox.appendChild(tempDiv);
-    chatBox.scrollTo({ top: chatBox.scrollHeight, behavior: 'smooth' });
-
-    // Ensure first message for API isn't shown to user unless they typed it
-    if (userMessage === "Please begin the interview." && interviewTranscript.length === 0) {
-        interviewTranscript.push({ role: "user", content: userMessage });
-    }
-
-    const currentPhase = PHASES[currentPhaseIndex] || "hr_logistics";
-
-    fetch('https://mockbee.onrender.com/api/interview/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            role: roleName,
-            level: "Mid-level",
-            history: interviewTranscript,
-            phase: currentPhase
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        const ind = document.getElementById('typing-indicator');
-        if (ind) ind.remove();
-
-        let aiReply = data.reply || "Could you elaborate on that?";
-        
-        let phaseAdvance = false;
-        if (aiReply.includes("[PHASE_COMPLETE]")) {
-            aiReply = aiReply.replace("[PHASE_COMPLETE]", "").trim();
-            phaseAdvance = true;
-        }
-
-        let isDone = false;
-        if (aiReply.includes("[INTERVIEW_COMPLETE]")) {
-            aiReply = aiReply.replace("[INTERVIEW_COMPLETE]", "").trim();
-            isDone = true;
-        }
-
-        interviewTranscript.push({ role: "assistant", content: aiReply });
-        sendAIMessage(aiReply);
-        
-        questionCount++;
-        updateProgress();
-
-        if (phaseAdvance) {
-            currentPhaseIndex++;
-        }
-
-        if (isDone || currentPhaseIndex >= PHASES.length) {
-            isInterviewComplete = true;
-            setTimeout(showResultsButton, 1500);
-        }
-    })
-    .catch(err => {
-        const ind = document.getElementById('typing-indicator');
-        if (ind) ind.remove();
-        console.error(err);
-        sendAIMessage("Network error. Could not connect to AI backend.");
-    });
+// Load voices (some browsers load asynchronously)
+if ('speechSynthesis' in window) {
+    window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
 }
 
-function sendAIMessage(text, isFeedback = false) {
+
+// ═══════════════════════════════════════════════════════
+//  UI HELPERS
+// ═══════════════════════════════════════════════════════
+
+function sendAIMessage(text, isFeedback = false, qNum = null) {
     const chatBox = document.getElementById('chat-box');
     const messageDiv = document.createElement('div');
     messageDiv.className = "message message--ai";
 
-    let formattedText = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    // Parse markdown bold
+    let formatted = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+
     let contentHtml = `<div class="ai-bubble">`;
-
     if (isFeedback) {
+        const qPrefix = qNum ? `<strong style="color: var(--navy-dark); font-size: 1.05rem;">Q${qNum}: </strong>` : '';
         contentHtml += `<div class="feedback-box">
-                            <i class="fas fa-certificate icon"></i>
-                            <strong>AI Feedback:</strong><br>
-                            ${formattedText}
-                        </div>`;
+            <i class="fas fa-certificate icon"></i>
+            <strong>Interviewer:</strong><br>
+            ${qPrefix}${formatted}
+        </div>`;
     } else {
-        contentHtml += formattedText;
+        contentHtml += formatted;
     }
-
     contentHtml += `</div>`;
     messageDiv.innerHTML = contentHtml;
 
@@ -351,22 +539,101 @@ function addUserMessage(text) {
     scrollToBottom();
 }
 
+function showTypingIndicator() {
+    const chatBox = document.getElementById('chat-box');
+    const existing = document.getElementById('typing-indicator');
+    if (existing) return;
+
+    const tempDiv = document.createElement('div');
+    tempDiv.className = "message message--ai";
+    tempDiv.id = "typing-indicator";
+    tempDiv.innerHTML = `<div class="ai-bubble"><i class="fas fa-spinner fa-spin"></i> AI is thinking...</div>`;
+    chatBox.appendChild(tempDiv);
+    scrollToBottom();
+}
+
+function removeTypingIndicator() {
+    const ind = document.getElementById('typing-indicator');
+    if (ind) ind.remove();
+}
+
+function enableInput() {
+    isAwaitingAnswer = true;
+    const userInput = document.getElementById('user-input');
+    const submitBtn = document.getElementById('submit-btn');
+    if (userInput) { userInput.disabled = false; userInput.focus(); }
+    if (submitBtn) submitBtn.disabled = false;
+}
+
+function disableInput() {
+    isAwaitingAnswer = false;
+    const userInput = document.getElementById('user-input');
+    const submitBtn = document.getElementById('submit-btn');
+    if (userInput) userInput.disabled = true;
+    if (submitBtn) submitBtn.disabled = true;
+}
+
 function updateProgress() {
     const currentQ = document.getElementById('current-q');
     const fill = document.querySelector('.progress-bar-fill');
+    if (!totalQuestions) return;
 
-    currentQ.innerText = questionCount;
-    const percent = Math.min((questionCount / targetTotalQuestions) * 100, 100);
+    const displayIndex = Math.min(questionCount, totalQuestions);
+    currentQ.innerText = displayIndex;
+
+    const percent = (displayIndex / totalQuestions) * 100;
     fill.style.width = percent + "%";
 }
 
 function scrollToBottom() {
     const chatBox = document.getElementById('chat-box');
-    chatBox.scrollTo({
-        top: chatBox.scrollHeight,
-        behavior: 'smooth'
-    });
+    chatBox.scrollTo({ top: chatBox.scrollHeight, behavior: 'smooth' });
 }
+
+
+// ═══════════════════════════════════════════════════════
+//  TIMER (for quick practice modes)
+// ═══════════════════════════════════════════════════════
+
+function startCountdown(seconds) {
+    const display = document.getElementById('timer-display');
+    const timerBox = document.getElementById('timer-box');
+    let timeLeft = seconds;
+
+    const timerInterval = setInterval(() => {
+        const mins = Math.floor(timeLeft / 60);
+        const secs = timeLeft % 60;
+        if (display) display.innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        if (timeLeft <= 60 && timerBox) timerBox.classList.add('warning');
+        if (timeLeft <= 0) {
+            clearInterval(timerInterval);
+            handleTimeUp();
+        }
+        timeLeft--;
+    }, 1000);
+}
+
+function handleTimeUp() {
+    if (isInterviewComplete) return;
+    if (typeof Swal !== 'undefined') {
+        Swal.fire({
+            title: 'Time is up!',
+            text: "Let's wrap up this session.",
+            icon: 'info',
+            confirmButtonColor: '#1a1a1a',
+            confirmButtonText: 'Got it',
+            background: '#ffffff',
+            color: '#1a1a1a',
+            backdrop: `rgba(0,0,0,0.4)`
+        });
+    }
+    finishInterview();
+}
+
+
+// ═══════════════════════════════════════════════════════
+//  RESULTS BUTTON
+// ═══════════════════════════════════════════════════════
 
 function showResultsButton() {
     const chatBox = document.getElementById('chat-box');
@@ -382,7 +649,7 @@ function showResultsButton() {
     btnContainer.className = "results-btn-container";
     btnContainer.innerHTML = `
         <button class="btn-view-results" id="generate-report-btn">
-            Generate Performance Report &rarr;
+            See Analysis and Report &rarr;
         </button>
         <div class="session-complete-msg">
             <i class="fas fa-check-circle"></i> Interview Assessment Complete
@@ -392,10 +659,12 @@ function showResultsButton() {
     chatBox.appendChild(btnContainer);
     scrollToBottom();
 
+    // Demo modal for standard mode
     if (typeof showDemoModal === 'function' && currentMode !== '1-q' && currentMode !== '5-min' && currentMode !== 'rapid' && currentMode !== 'warmup') {
         setTimeout(showDemoModal, 800);
     }
 
+    // Handle report generation
     const generateBtn = document.getElementById('generate-report-btn');
     generateBtn.addEventListener('click', (e) => {
         e.preventDefault();
@@ -404,10 +673,12 @@ function showResultsButton() {
             id: Date.now(),
             role: roleName,
             transcript: interviewTranscript,
+            conversationHistory: conversationHistory,
             date: new Date().toLocaleDateString(),
             totalQuestions: questionCount,
             mode: currentMode,
-            isQuick: true
+            isQuick: currentMode !== 'standard',
+            isPro: currentMode === 'standard'
         };
 
         localStorage.setItem('recentInterview', JSON.stringify(sessionData));

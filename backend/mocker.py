@@ -107,6 +107,7 @@ Rules:
 - Give a brief 1-sentence acknowledgment after each answer before asking next
 - Ask exactly {q_target} questions in this phase, then say:
   "Thank you! Let's now move on to discuss your projects and experience. [PHASE_COMPLETE]"
+  CRITICAL: DO NOT ask any questions in the same message as [PHASE_COMPLETE].
 - Do NOT ask technical questions in this phase
 - Be friendly and encouraging
 
@@ -128,6 +129,7 @@ Rules:
 - Acknowledge briefly before next question
 - Ask exactly {q_target} questions, then say:
   "Great insights! Now let's dive into some technical questions. [PHASE_COMPLETE]"
+  CRITICAL: DO NOT ask any questions in the same message as [PHASE_COMPLETE].
 - Tailor project questions to the {role} domain
 - Do NOT ask HR or pure behavioural questions here""",
 
@@ -162,6 +164,7 @@ Rules:
 - Acknowledge answer briefly; point out a key strength or gentle correction
 - Ask exactly {q_target} questions, then say:
   "Good work on the technical round! Let's now look at optimization scenarios. [PHASE_COMPLETE]"
+  CRITICAL: DO NOT ask any questions in the same message as [PHASE_COMPLETE].
 - Progressively increase difficulty""",
 
     "optimization": """You are a senior technical interviewer focusing on optimization.
@@ -181,6 +184,7 @@ Rules:
 - After their answer, ask a quick follow-up on trade-offs or alternatives once
 - Ask exactly {q_target} questions, then say:
   "Excellent thinking! Now let's move to some behavioural questions. [PHASE_COMPLETE]"
+  CRITICAL: DO NOT ask any questions in the same message as [PHASE_COMPLETE].
 - Keep scenarios realistic and role-relevant""",
 
     "behavioural": """You are a professional interviewer assessing behavioural competencies.
@@ -200,6 +204,7 @@ Rules:
 - After each answer give a brief, encouraging acknowledgment
 - After question 5, say:
   "Thank you for sharing that! Finally, let's discuss some logistical details. [PHASE_COMPLETE]"
+  CRITICAL: DO NOT ask any questions in the same message as [PHASE_COMPLETE].
 - Use STAR method prompts if answers are too vague ("Can you walk me through the Situation, Task, Action, and Result?")""",
 
     "hr_logistics": """You are an HR interviewer wrapping up the interview.
@@ -220,6 +225,7 @@ Rules:
 - After question 5, say:
   "That's all from my side! Thank you so much for your time today. 
    We'll review your interview and get back to you. It was great speaking with you! [INTERVIEW_COMPLETE]"
+  CRITICAL: DO NOT ask any questions in the same message as [INTERVIEW_COMPLETE].
 - Do NOT ask any more questions after the closing statement""",
 }
 
@@ -237,7 +243,7 @@ The interview was conducted in 6 phases:
 Transcript:
 {transcript}
 
-Reply ONLY with valid JSON (no markdown, no extra text):
+Reply ONLY with valid JSON (no markdown, no extra text). Score each field from 1-10 where 10 is exceptional:
 {{
   "overall": <1-10>,
   "self_intro": <1-10>,
@@ -246,19 +252,20 @@ Reply ONLY with valid JSON (no markdown, no extra text):
   "optimization": <1-10>,
   "behavioural": <1-10>,
   "hr_logistics": <1-10>,
+  "clarity": <1-10>,
   "communication": <1-10>,
   "confidence": <1-10>,
-  "strengths": ["...", "...", "..."],
-  "improvements": ["...", "...", "..."],
+  "strengths": ["specific strength 1", "specific strength 2", "specific strength 3"],
+  "improvements": ["specific area 1", "specific area 2", "specific area 3"],
   "phase_feedback": {{
-    "self_intro": "one sentence feedback",
-    "projects_skills": "one sentence feedback",
-    "technical": "one sentence feedback",
-    "optimization": "one sentence feedback",
-    "behavioural": "one sentence feedback",
-    "hr_logistics": "one sentence feedback"
+    "self_intro": "One specific sentence about how the candidate introduced themselves.",
+    "projects_skills": "One specific sentence about the projects and skills they described.",
+    "technical": "One specific sentence about their technical depth and accuracy.",
+    "optimization": "One specific sentence about their problem-solving and optimization thinking.",
+    "behavioural": "One specific sentence about their behavioural and situational answers.",
+    "hr_logistics": "One specific sentence about their HR and logistics readiness."
   }},
-  "summary": "3-4 sentence overall assessment"
+  "summary": "3-4 sentences of personalized, detailed overall assessment referencing specific answers."
 }}"""
 
 

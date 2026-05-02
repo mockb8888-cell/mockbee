@@ -315,6 +315,7 @@ body {
   background: #E84C3D;
   border-radius: 50%;
   border: 1.5px solid #FFF;
+  display: none; /* Hidden by default, managed by JS */
 }
 
 .header-date {

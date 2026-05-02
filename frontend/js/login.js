@@ -90,7 +90,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const mockPassword = `oauth_token_${provider.toLowerCase()}`;
 
             // Try to login first
-            fetch('https://mockbee.onrender.com/api/login', {
+            fetch(`${API_BASE}/api/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: mockEmail, password: mockPassword })
@@ -102,7 +102,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     finalizeOAuth(data.name, data.email);
                 } else {
                     // Login failed, try to register the mock account
-                    fetch('https://mockbee.onrender.com/api/signup', {
+                    fetch(`${API_BASE}/api/signup`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ name: mockName, email: mockEmail, password: mockPassword })
@@ -126,12 +126,33 @@ document.addEventListener('DOMContentLoaded', () => {
     function finalizeOAuth(name, email) {
         localStorage.setItem('mockbee_user_name', name);
         localStorage.setItem('mockbee_user_email', email);
-        localStorage.setItem('mockbee_subscribed', 'false');
+        
+        // Restore subscription status from account registry if available
+        const accounts = JSON.parse(localStorage.getItem('mockbee_accounts') || '{}');
+        const userAcc = accounts[email];
 
-        localStorage.removeItem('mockbee_subscribed_plan');
-        localStorage.removeItem('mockbee_all_plans');
+        if (userAcc && userAcc.subscribed) {
+            localStorage.setItem('mockbee_subscribed', 'true');
+            localStorage.setItem('mockbee_subscribed_plan', userAcc.subscribedPlan || 'standard');
+            if (userAcc.allPlans) localStorage.setItem('mockbee_all_plans', JSON.stringify(userAcc.allPlans));
+            if (userAcc.startDate) localStorage.setItem('mockbee_sub_start_date', userAcc.startDate);
+            if (userAcc.endDate) localStorage.setItem('mockbee_sub_end_date', userAcc.endDate);
+            if (userAcc.billing) localStorage.setItem('mockbee_sub_billing', userAcc.billing);
+        } else {
+            localStorage.setItem('mockbee_subscribed', 'false');
+            localStorage.removeItem('mockbee_subscribed_plan');
+            localStorage.removeItem('mockbee_all_plans');
+            localStorage.removeItem('mockbee_sub_start_date');
+            localStorage.removeItem('mockbee_sub_end_date');
+            localStorage.removeItem('mockbee_sub_billing');
+        }
+
         localStorage.removeItem('mockbee_interviews');
         localStorage.removeItem('mockbee_activities');
+        localStorage.removeItem('mockbee_badges');
+        localStorage.removeItem('mockbee_notifications');
+        localStorage.removeItem('mockbee_notif_unread');
+        localStorage.removeItem('mockbee_subscription_expiry');
 
         window.location.href = 'dashboard.html';
     }
@@ -175,7 +196,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const searchEmail = emailRaw.toLowerCase();
 
-            fetch('https://mockbee.onrender.com/api/login', {
+            fetch(`${API_BASE}/api/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: searchEmail, password: password })
@@ -193,18 +214,43 @@ document.addEventListener('DOMContentLoaded', () => {
                 // ✅ Success - set session
                 localStorage.setItem('mockbee_user_name', res.body.name || '');
                 localStorage.setItem('mockbee_user_email', res.body.email);
+                localStorage.setItem('mockbee_is_admin', res.body.is_admin ? 'true' : 'false');
                 
-                // Assume default status or try to fetch from somewhere if applicable
-                localStorage.setItem('mockbee_subscribed', 'false');
+                // Admin redirect
+                if (res.body.is_admin) {
+                    localStorage.removeItem('mockbee_interviews');
+                    localStorage.removeItem('mockbee_activities');
+                    window.location.href = 'admin-dashboard.html';
+                    return;
+                }
 
-                // Restore this user's plan data and clear stale data from previous sessions
-                localStorage.removeItem('mockbee_subscribed_plan');
-                localStorage.removeItem('mockbee_all_plans');
-                localStorage.removeItem('mockbee_sub_start_date');
-                localStorage.removeItem('mockbee_sub_end_date');
-                localStorage.removeItem('mockbee_sub_billing');
+                // Restore subscription status from account registry if available
+                const accounts = JSON.parse(localStorage.getItem('mockbee_accounts') || '{}');
+                const userAcc = accounts[res.body.email];
+
+                if (userAcc && userAcc.subscribed) {
+                    localStorage.setItem('mockbee_subscribed', 'true');
+                    localStorage.setItem('mockbee_subscribed_plan', userAcc.subscribedPlan || 'standard');
+                    if (userAcc.allPlans) localStorage.setItem('mockbee_all_plans', JSON.stringify(userAcc.allPlans));
+                    if (userAcc.startDate) localStorage.setItem('mockbee_sub_start_date', userAcc.startDate);
+                    if (userAcc.endDate) localStorage.setItem('mockbee_sub_end_date', userAcc.endDate);
+                    if (userAcc.billing) localStorage.setItem('mockbee_sub_billing', userAcc.billing);
+                } else {
+                    localStorage.setItem('mockbee_subscribed', 'false');
+                    localStorage.removeItem('mockbee_subscribed_plan');
+                    localStorage.removeItem('mockbee_all_plans');
+                    localStorage.removeItem('mockbee_sub_start_date');
+                    localStorage.removeItem('mockbee_sub_end_date');
+                    localStorage.removeItem('mockbee_sub_billing');
+                }
+
+                // Clear stale user data from previous browser sessions
                 localStorage.removeItem('mockbee_interviews');
                 localStorage.removeItem('mockbee_activities');
+                localStorage.removeItem('mockbee_badges');
+                localStorage.removeItem('mockbee_notifications');
+                localStorage.removeItem('mockbee_notif_unread');
+                localStorage.removeItem('mockbee_subscription_expiry');
 
                 window.location.href = 'dashboard.html';
             })

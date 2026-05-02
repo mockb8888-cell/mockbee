@@ -20,7 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const mockPassword = `oauth_token_${provider.toLowerCase()}`;
 
             // Register directly via backend API
-            fetch('https://mockbee.onrender.com/api/signup', {
+            fetch(`${API_BASE}/api/signup`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name: mockName, email: mockEmail, password: mockPassword })
@@ -138,7 +138,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const email = emailRaw.toLowerCase();
 
             // Setup API call to FastAPI backend
-            fetch('https://mockbee.onrender.com/api/signup', {
+            fetch(`${API_BASE}/api/signup`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name: fullname, email: email, password: pass })
@@ -160,11 +160,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 localStorage.setItem('mockbee_subscribed', 'false');
                 localStorage.setItem('mockbee_send_welcome_email', 'true'); // Flag for welcome email
                 
-                // Clear any stale plan data from a previous user's session
+                // Ensure all stale user data is cleared for the new session
                 localStorage.removeItem('mockbee_subscribed_plan');
                 localStorage.removeItem('mockbee_all_plans');
+                localStorage.removeItem('mockbee_sub_start_date');
+                localStorage.removeItem('mockbee_sub_end_date');
+                localStorage.removeItem('mockbee_sub_billing');
                 localStorage.removeItem('mockbee_interviews');
                 localStorage.removeItem('mockbee_activities');
+                localStorage.removeItem('mockbee_badges');
+                localStorage.removeItem('mockbee_notifications');
+                localStorage.removeItem('mockbee_notif_unread');
+                localStorage.removeItem('mockbee_subscription_expiry');
 
                 // Redirect with rocket animation effect if possible
                 window.location.href = 'dashboard.html?source=new_user';

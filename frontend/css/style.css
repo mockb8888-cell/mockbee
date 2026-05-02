@@ -134,6 +134,7 @@ body {
   align-items: center;
   gap: 36px;
   list-style: none;
+  margin-right: 40px; /* Shifted left slightly as requested */
 }
 
 .navbar__nav a {

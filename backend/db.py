@@ -13,10 +13,12 @@ Collections
 from __future__ import annotations
 import os, datetime
 from typing import Optional
+from dotenv import load_dotenv
 from pymongo import MongoClient, DESCENDING
 from pymongo.collection import Collection
 
 # ── Connection ────────────────────────────────────────────────────────────────
+load_dotenv()
 MONGO_URI = os.environ.get("MONGO_URI", "mongodb://localhost:27017")
 _client: Optional[MongoClient] = None
 

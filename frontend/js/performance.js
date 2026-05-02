@@ -28,29 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
  * Populates the Performance Report UI with data from a specific session
  */
 window.populateReport = function (sessionData) {
-    let { role, transcript, date, totalQuestions } = sessionData;
-
-    // Normalize transcript if it uses the newer {role, content} format
-    if (transcript && transcript.length > 0 && transcript[0].role !== undefined) {
-        const normalized = [];
-        let currentQ = "";
-        transcript.forEach(t => {
-            if (t.role === "assistant" || t.role === "model") {
-                if (currentQ) normalized.push({ question: currentQ, answer: "No answer provided" });
-                currentQ = t.content;
-            } else if (t.role === "user") {
-                if (currentQ) {
-                    normalized.push({ question: currentQ, answer: t.content });
-                    currentQ = "";
-                } else {
-                    normalized.push({ question: "User input", answer: t.content });
-                }
-            }
-        });
-        if (currentQ) normalized.push({ question: currentQ, answer: "No answer provided" });
-        transcript = normalized;
-        sessionData.transcript = transcript; // Update reference for saves
-    }
+    const { role, transcript, date, totalQuestions } = sessionData;
 
     // 2. Populate Header
     const roleDisplay = document.getElementById('role-display');
@@ -102,7 +80,7 @@ window.populateReport = function (sessionData) {
     // 4. Determine if we should evaluate or load cached analysis
     if (sessionData.analysis) {
         // INSTANT LOAD FOR SAVED SESSIONS
-        updateScores(sessionData.analysis);
+        updateScores(sessionData.analysis, transcript);
         
         let qScores = sessionData.analysis.questionScores;
         let cScores = sessionData.analysis.confidenceScores;
@@ -114,17 +92,20 @@ window.populateReport = function (sessionData) {
         drawPerformanceChart(qScores, cScores);
     } else {
         // Evaluate dynamically
-        const history = [];
-        if (transcript && transcript.length > 0) {
+        // Prefer full conversationHistory from phase-driven interview
+        let history = [];
+        if (sessionData.conversationHistory && sessionData.conversationHistory.length > 0) {
+            history = sessionData.conversationHistory;
+        } else if (transcript && transcript.length > 0) {
             transcript.forEach(t => {
                 history.push({ role: "assistant", content: t.question });
                 if (t.answer) history.push({ role: "user", content: t.answer });
             });
-
+        }
         const feedbackEl = document.getElementById('ai-feedback-text');
         if (feedbackEl) feedbackEl.innerText = "Analyzing performance with AI... please wait.";
 
-        fetch('https://mockbee.onrender.com/api/interview/evaluate', {
+        fetch(`${API_BASE}/api/interview/evaluate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -142,22 +123,33 @@ window.populateReport = function (sessionData) {
         .then(data => {
             if (data.status === 'success' && data.evaluation) {
                 const ev = data.evaluation;
-                const qLen = transcript && transcript.length > 0 ? transcript.length : 1;
-                const qScores = Array(qLen).fill((ev.technical || 5) * 10);
-                const cScores = Array(qLen).fill((ev.confidence || 5) * 10);
+                const phaseScores = [
+                    (ev.self_intro || 5) * 10,
+                    (ev.projects_skills || 5) * 10,
+                    (ev.technical || 5) * 10,
+                    (ev.optimization || 5) * 10,
+                    (ev.behavioural || 5) * 10,
+                    (ev.hr_logistics || 5) * 10,
+                ];
+                const confBase = (ev.confidence || 5) * 10;
+                const confScores = phaseScores.map(s => Math.min(100, Math.max(0, Math.round(s * 0.7 + confBase * 0.3))));
 
                 const analysis = {
                     overall: (ev.overall || 5) * 10,
-                    communication: (ev.communication || 5) * 10,
+                    clarity: (ev.clarity || ev.communication || 5) * 10,
                     technical: (ev.technical || 5) * 10,
-                    optimization: (ev.optimization || 5) * 10,
-                    behavioural: (ev.behavioural || 5) * 10,
-                    confidence: (ev.confidence || 5) * 10,
-                    questionScores: qScores,
-                    confidenceScores: cScores,
+                    confidence: confBase,
+                    selfIntro: phaseScores[0],
+                    optimization: phaseScores[3],
+                    behavioural: phaseScores[4],
+                    projects_skills: phaseScores[1],
+                    hr_logistics: phaseScores[5],
+                    questionScores: phaseScores,
+                    confidenceScores: confScores,
                     feedback: ev.summary || "Good completion of the interview.",
                     strengths: ev.strengths || ["Completed assessment"],
-                    improvements: ev.improvements || ["Practice more"]
+                    improvements: ev.improvements || ["Practice more"],
+                    phase_feedback: ev.phase_feedback || {}
                 };
                 
                 // Permanently save the generated scores so Dashboard can read it
@@ -174,7 +166,7 @@ window.populateReport = function (sessionData) {
                     // SAVE TO DATABASE
                     const userEmail = localStorage.getItem('mockbee_user_email');
                     if (userEmail) {
-                        fetch('https://mockbee.onrender.com/api/interview/save', {
+                        fetch(`${API_BASE}/api/interview/save`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
@@ -195,15 +187,19 @@ window.populateReport = function (sessionData) {
                     localStorage.setItem('recentInterview', JSON.stringify(recentItem));
                 }
 
-                updateScores(analysis);
-                drawPerformanceChart(analysis.questionScores, analysis.confidenceScores);
+                updateScores(analysis, transcript);
+                drawPerformanceChart(analysis.questionScores, analysis.confidenceScores,
+                    ['Intro', 'Projects', 'Technical', 'Optimize', 'Behaviour', 'HR']);
             } else {
                 throw new Error(data.detail || "API returned invalid status.");
             }
         })
         .catch(err => {
             console.error("Evaluation error:", err);
-            if (feedbackEl) feedbackEl.innerText = "Error analyzing performance. Using local logic fallback.";
+            const isOffline = err.message && err.message.toLowerCase().includes('fetch');
+            if (feedbackEl) feedbackEl.innerText = isOffline
+                ? "⚠️ Backend offline — showing local analysis based on your answers."
+                : "Analysis complete (local mode).";
             const analysis = analyzePerformance(transcript, role);
             
             let histories = JSON.parse(localStorage.getItem('mockbee_interviews') || '[]');
@@ -215,7 +211,7 @@ window.populateReport = function (sessionData) {
                 // SAVE TO DATABASE
                 const userEmail = localStorage.getItem('mockbee_user_email');
                 if (userEmail) {
-                    fetch('https://mockbee.onrender.com/api/interview/save', {
+                    fetch(`${API_BASE}/api/interview/save`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -232,16 +228,12 @@ window.populateReport = function (sessionData) {
                 }
             }
 
-            updateScores(analysis);
+            updateScores(analysis, transcript);
             drawPerformanceChart(analysis.questionScores, analysis.confidenceScores);
         });
-    } else {
-        const analysis = analyzePerformance([], role);
-        updateScores(analysis);
-        drawPerformanceChart(analysis.questionScores, analysis.confidenceScores);
-    }
     }
 };
+
 
 // Also keep a listener wrapper for manual triggers if needed
 window.initializeReport = function (score) {
@@ -277,10 +269,8 @@ function analyzePerformance(transcript, role) {
     if (!transcript || transcript.length === 0) {
         return {
             overall: 0,
-            communication: 0,
+            clarity: 0,
             technical: 0,
-            optimization: 0,
-            behavioural: 0,
             confidence: 0,
             questionScores: [0],
             confidenceScores: [0],
@@ -305,34 +295,35 @@ function analyzePerformance(transcript, role) {
 
         // --- High-Performance Logic ---
 
-        // 1. Technical Score: Depends heavily on keywords
+        // 1. Technical Score: keyword-boosted from a realistic baseline
         const matchedKeywords = roleKeywords.filter(kw => text.includes(kw.toLowerCase()));
 
-        // Base technical score is low (10). It grows with keywords and depth.
-        let techScore = 10 + (matchedKeywords.length * 15);
-        if (wordCount > 20) techScore += 10;
-        if (wordCount > 50) techScore += 10;
+        // Base technical score starts at 50 (average). Grows with keywords and depth.
+        let techScore = 50 + (matchedKeywords.length * 8);
+        if (wordCount > 15) techScore += 8;
+        if (wordCount > 40) techScore += 10;
+        if (wordCount > 80) techScore += 7;
 
         // Cap it at 98
         techScore = Math.min(techScore, 98);
 
-        // 2. Clarity Score: Penalize if nonsense or too short
-        let clarityScore = 0;
-        if (wordCount < 3) clarityScore = 5; // Gibberish like "vvvbbb"
-        else if (wordCount < 10) clarityScore = 20;
-        else if (matchedKeywords.length === 0 && wordCount < 20) clarityScore = 30; // Irrelevant
-        else clarityScore = Math.min(40 + (wordCount * 0.5), 90);
+        // 2. Clarity Score: starts at 55, penalized for very short answers
+        let clarityScore = 55;
+        if (wordCount < 3) clarityScore = 10;
+        else if (wordCount < 8) clarityScore = 30;
+        else if (wordCount < 15) clarityScore = 45;
+        else clarityScore = Math.min(55 + (wordCount * 0.3), 92);
 
-        // 3. Confidence Score: If they say very little, confidence is low
-        let confScore = 15 + (wordCount * 2);
-        if (matchedKeywords.length > 0) confScore += 20;
+        // 3. Confidence Score: baseline 55, grows with answer length
+        let confScore = 55 + (wordCount * 0.8);
+        if (matchedKeywords.length > 0) confScore += 10;
         confScore = Math.min(confScore, 95);
 
         // Realism: If it's absolute gibberish (one word, no keywords), crater everything
-        if (wordCount === 1 && matchedKeywords.length === 0) {
-            techScore = 5;
-            clarityScore = 5;
-            confScore = 10;
+        if (wordCount <= 2 && matchedKeywords.length === 0) {
+            techScore = 10;
+            clarityScore = 10;
+            confScore = 15;
         }
 
         questionScores.push(Math.round(techScore));
@@ -384,11 +375,12 @@ function analyzePerformance(transcript, role) {
 
     return {
         overall,
-        communication: Math.min(avgClarity, 100),
+        clarity: Math.min(avgClarity, 100),
         technical: Math.min(avgTechnical, 100),
-        optimization: Math.min(avgTechnical, 100),
-        behavioural: Math.min(avgClarity, 100),
         confidence: Math.min(avgConfidence, 100),
+        selfIntro: Math.min(avgClarity, 100),
+        optimization: Math.min(avgTechnical, 100),
+        behavioural: Math.min(avgConfidence, 100),
         questionScores,
         confidenceScores,
         feedback,
@@ -397,7 +389,7 @@ function analyzePerformance(transcript, role) {
     };
 }
 
-function updateScores(analysis) {
+function updateScores(analysis, transcript) {
     // Overall Score
     const scoreEl = document.getElementById('overall-score');
     const badgeEl = document.getElementById('score-badge');
@@ -423,11 +415,44 @@ function updateScores(analysis) {
         }
     }
 
+    // Generate dynamic scores for new bars if they don't exist
+    if (analysis.selfIntro === undefined) {
+        let tIntro = 0, tOpt = 0, tBeh = 0;
+        if (transcript && transcript.length > 0) {
+            transcript.forEach(item => {
+                const text = item.answer ? item.answer.toLowerCase() : "";
+                const wordCount = text.trim().split(/\s+/).length;
+                
+                let introScore = 40 + (wordCount * 0.5);
+                if (text.includes("i am") || text.includes("experience") || text.includes("worked") || text.includes("years") || text.includes("my name")) introScore += 30;
+                
+                let optScore = 30 + (wordCount * 0.5);
+                if (text.includes("time") || text.includes("space") || text.includes("efficient") || text.includes("complexity") || text.includes("optimize") || text.includes("o(")) optScore += 40;
+                
+                let behScore = 45 + (wordCount * 0.5);
+                if (text.includes("team") || text.includes("challenge") || text.includes("collaborate") || text.includes("situation") || text.includes("task") || text.includes("conflict")) behScore += 30;
+                
+                tIntro += Math.min(introScore, 98);
+                tOpt += Math.min(optScore, 98);
+                tBeh += Math.min(behScore, 98);
+            });
+            analysis.selfIntro = Math.round(tIntro / transcript.length);
+            analysis.optimization = Math.round(tOpt / transcript.length);
+            analysis.behavioural = Math.round(tBeh / transcript.length);
+        } else {
+            analysis.selfIntro = 0;
+            analysis.optimization = 0;
+            analysis.behavioural = 0;
+        }
+    }
+
     // Skill Bars
-    updateSkill('communication', analysis.communication || 50);
-    updateSkill('technical', analysis.technical || 50);
-    updateSkill('optimization', analysis.optimization || 50);
-    updateSkill('behavioural', analysis.behavioural || 50);
+    updateSkill('clarity', analysis.clarity);
+    updateSkill('technical', analysis.technical);
+    updateSkill('confidence', analysis.confidence);
+    updateSkill('self-intro', analysis.selfIntro);
+    updateSkill('optimization', analysis.optimization);
+    updateSkill('behavioural', analysis.behavioural);
 
     // AI Feedback Text
     const feedbackText = document.getElementById('ai-feedback-text');
@@ -450,6 +475,11 @@ function updateScores(analysis) {
     // Strengths & Improvements Lists
     populateList('strengths-list', analysis.strengths);
     populateList('improvements-list', analysis.improvements);
+
+    // Phase Breakdown (only for structured interviews with phase_feedback)
+    if (analysis.phase_feedback && Object.keys(analysis.phase_feedback).length > 0) {
+        showPhaseFeedback(analysis);
+    }
 }
 
 function populateList(id, items) {
@@ -478,7 +508,45 @@ function updateSkill(id, val) {
     }
 }
 
-function drawPerformanceChart(qScores, cScores) {
+function showPhaseFeedback(analysis) {
+    const container = document.getElementById('phase-breakdown-container');
+    const grid = document.getElementById('phase-grid');
+    if (!container || !grid) return;
+
+    const phases = [
+        { key: 'self_intro',      label: 'Self Introduction', icon: 'fas fa-user-circle', scoreKey: 'selfIntro' },
+        { key: 'projects_skills', label: 'Projects & Skills',  icon: 'fas fa-code',        scoreKey: 'projects_skills' },
+        { key: 'technical',       label: 'Technical',          icon: 'fas fa-microchip',   scoreKey: 'technical' },
+        { key: 'optimization',    label: 'Optimization',       icon: 'fas fa-bolt',        scoreKey: 'optimization' },
+        { key: 'behavioural',     label: 'Behavioural',        icon: 'fas fa-users',       scoreKey: 'behavioural' },
+        { key: 'hr_logistics',    label: 'HR & Logistics',     icon: 'fas fa-briefcase',   scoreKey: 'hr_logistics' }
+    ];
+
+    grid.innerHTML = '';
+    let hasContent = false;
+
+    phases.forEach(phase => {
+        const feedback = (analysis.phase_feedback || {})[phase.key];
+        const score = analysis[phase.scoreKey] || 0;
+        const color = score >= 80 ? '#27AE60' : score >= 60 ? '#D4A017' : '#E53935';
+        const card = document.createElement('div');
+        card.style.cssText = `background:#faf9f8; border-radius:12px; padding:16px; border-left:4px solid ${color};`;
+        card.innerHTML = `
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                <i class="${phase.icon}" style="color:${color};"></i>
+                <span style="font-size:0.72rem;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#1A1A1A;">${phase.label}</span>
+            </div>
+            <div style="font-size:1.8rem;font-weight:900;color:${color};margin-bottom:6px;">${score}%</div>
+            <p style="font-size:0.78rem;color:#4A4A4A;line-height:1.5;margin:0;">${feedback || 'Phase completed.'}</p>
+        `;
+        grid.appendChild(card);
+        hasContent = true;
+    });
+
+    if (hasContent) container.style.display = 'block';
+}
+
+function drawPerformanceChart(qScores, cScores, labels) {
     const scorePath = document.getElementById('score-path');
     const scoreNodes = document.getElementById('score-nodes');
     const confidencePath = document.getElementById('confidence-path');
@@ -487,6 +555,7 @@ function drawPerformanceChart(qScores, cScores) {
 
     if (!scorePath) return;
 
+    const chartLabels = labels || qScores.map((_, i) => `Q${i + 1}`);
     const width = 460;
     const startX = 60;
     const stepX = qScores.length > 1 ? width / (qScores.length - 1) : 0;
@@ -501,17 +570,17 @@ function drawPerformanceChart(qScores, cScores) {
     qScores.forEach((score, i) => {
         const x = startX + (i * stepX);
         const yScore = 180 - (score * 1.5);
-        const yConf = 180 - (cScores[i] * 1.5);
+        const yConf = 180 - ((cScores[i] || 50) * 1.5);
 
         if (i === 0) pathD += `M ${x},${yScore}`;
         else pathD += ` L ${x},${yScore}`;
 
         confPoints += `${x},${yConf} `;
 
-        scoreNodes.innerHTML += `<circle cx="${x}" cy="${yScore}" r="4" fill="var(--parchment)" stroke="var(--gold-dark)"></circle>`;
-        confidenceNodes.innerHTML += `<circle cx="${x}" cy="${yConf}" r="5" fill="var(--navy-dark)"></circle>`;
+        scoreNodes.innerHTML += `<circle cx="${x}" cy="${yScore}" r="4" fill="var(--parchment)" stroke="var(--gold-dark)"><title>${chartLabels[i]}: ${score}%</title></circle>`;
+        confidenceNodes.innerHTML += `<circle cx="${x}" cy="${yConf}" r="5" fill="var(--navy-dark)"><title>Confidence: ${Math.round(cScores[i] || 50)}%</title></circle>`;
 
-        labelsGroup.innerHTML += `<text x="${x}" y="210" font-size="12" font-weight="900" fill="var(--navy)" text-anchor="middle">Q${i + 1}</text>`;
+        labelsGroup.innerHTML += `<text x="${x}" y="215" font-size="9" font-weight="900" fill="var(--navy)" text-anchor="middle">${chartLabels[i]}</text>`;
     });
 
     scorePath.setAttribute('d', pathD);
