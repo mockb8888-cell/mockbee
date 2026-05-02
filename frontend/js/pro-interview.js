@@ -194,7 +194,30 @@ function handleUserSubmit() {
         const ind = document.getElementById('typing-indicator');
         if (ind) ind.remove();
         console.error(err);
-        sendAIMessage("Network error. Could not connect to AI backend.");
+
+        // Graceful fallback — use local feedback so interview flow continues
+        currentQuestionIndex++;
+
+        if (currentQuestionIndex >= 10) {
+            const quitBtn = document.getElementById('quit-complete-btn');
+            if (quitBtn) quitBtn.style.display = 'block';
+        }
+
+        const localFeedback = generateDynamicFeedback(message, questions[currentQuestionIndex - 1] || '');
+
+        if (currentQuestionIndex < questions.length) {
+            sendAIMessage(localFeedback, true);
+            setTimeout(() => {
+                updateProgress();
+                askNextQuestion();
+            }, 1800);
+        } else {
+            if (isInterviewComplete) return;
+            isInterviewComplete = true;
+            updateProgress();
+            sendAIMessage("Great effort! You've completed the full assessment. Your report is now ready.", false);
+            setTimeout(showResultsButton, 1000);
+        }
     });
 }
 

@@ -246,8 +246,17 @@ function requestAIQuestion() {
     .catch(err => {
         removeTypingIndicator();
         console.error("AI Error:", err);
-        sendAIMessage("⚠️ Network error. Could not reach the AI backend. Please check your connection.");
-        enableInput(); // let them retry
+        sendAIMessage("⚠️ The AI server is starting up. Please wait ~30 seconds and click **Retry** below.");
+        // Show a retry button
+        setTimeout(() => {
+            const chatBox = document.getElementById('chat-box');
+            const retryDiv = document.createElement('div');
+            retryDiv.className = 'message';
+            retryDiv.innerHTML = `<button onclick="this.parentElement.remove(); requestAIQuestion();" style="margin:8px auto; display:block; padding:10px 24px; background:#1a1a1a; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:700;">🔄 Retry</button>`;
+            chatBox.appendChild(retryDiv);
+            scrollToBottom();
+        }, 400);
+        enableInput();
     });
 }
 
@@ -348,7 +357,7 @@ function handleUserSubmit() {
         removeTypingIndicator();
         isAIProcessing = false;
         console.error("AI Error:", err);
-        sendAIMessage("⚠️ Network error. Please check your connection and try again.");
+        sendAIMessage("⚠️ Connection lost. The server may be starting up — please wait a moment and try submitting again.");
         enableInput();
     });
 }

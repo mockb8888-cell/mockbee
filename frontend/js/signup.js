@@ -177,8 +177,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.location.href = 'dashboard.html?source=new_user';
             })
             .catch(err => {
-                showSignupError('Network error. Is the backend running?');
                 console.error(err);
+                // Backend unreachable — save account locally so user can proceed
+                const accounts = JSON.parse(localStorage.getItem('mockbee_accounts') || '{}');
+                if (accounts[email]) {
+                    showSignupError('An account with this email already exists. Please log in.');
+                    return;
+                }
+                // Save locally (will sync to DB on next backend connection)
+                accounts[email] = { name: fullname, password: pass, subscribed: false };
+                localStorage.setItem('mockbee_accounts', JSON.stringify(accounts));
+                localStorage.setItem('mockbee_user_name', fullname);
+                localStorage.setItem('mockbee_user_email', email);
+                localStorage.setItem('mockbee_subscribed', 'false');
+                localStorage.setItem('mockbee_send_welcome_email', 'true');
+                localStorage.removeItem('mockbee_subscribed_plan');
+                localStorage.removeItem('mockbee_all_plans');
+                localStorage.removeItem('mockbee_interviews');
+                localStorage.removeItem('mockbee_activities');
+                window.location.href = 'dashboard.html?source=new_user';
             });
         });
     }
