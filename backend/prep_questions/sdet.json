@@ -1,0 +1,161 @@
+{
+  "Core Java": [
+    "What is polymorphism?",
+    "Difference between abstraction and interface",
+    "What is method overriding?",
+    "Explain exception handling in Java",
+    "Difference between final and finally",
+    "Difference between List and Set",
+    "Difference between Array and ArrayList",
+    "Difference between HashMap and HashSet",
+    "Difference between StringBuffer and StringBuilder",
+    "What is inheritance?",
+    "What is encapsulation?",
+    "What is multithreading?",
+    "What is JVM, JRE, JDK?",
+    "What are access modifiers in Java?",
+    "Difference between method overloading and overriding",
+    "What is static keyword?",
+    "What is constructor?",
+    "What is OOPS concept?",
+    "Write a program to reverse a string",
+    "Write a program to find duplicate characters in a string",
+    "Write a program to find second highest number in an array",
+    "Write a program for anagram check",
+    "Explain string pool in Java"
+  ],
+
+  "Selenium": [
+    "What are locators in Selenium?",
+    "Difference between findElement and findElements",
+    "How to handle multiple windows in Selenium?",
+    "How to take screenshots in Selenium?",
+    "What are different waits in Selenium?",
+    "Difference between implicit and explicit wait",
+    "What is Fluent Wait?",
+    "What are Selenium exceptions and how to handle them?",
+    "How to handle dynamic elements?",
+    "How to handle dropdowns in Selenium?",
+    "What is Page Object Model (POM)?",
+    "Difference between PageFactory and POM",
+    "How to handle alerts and frames?",
+    "How to perform cross-browser testing?",
+    "What is StaleElementReferenceException?",
+    "How to use Actions class?",
+    "Difference between driver.get() and navigate().to()"
+  ],
+
+  "Playwright": [
+    "What is Playwright?",
+    "Difference between Selenium and Playwright",
+    "How to handle locators in Playwright?",
+    "How to handle popups in Playwright?",
+    "What are assertions in Playwright?",
+    "How to perform parallel execution in Playwright?",
+    "How to handle multiple browser contexts?",
+    "How to intercept network requests in Playwright?",
+    "How to handle authentication in Playwright?",
+    "How to capture screenshots and videos in Playwright?",
+    "What is auto-waiting in Playwright?",
+    "How to validate dropdowns in Playwright?",
+    "How to debug in Playwright?",
+    "How to handle flaky tests in Playwright?"
+  ],
+
+  "API Testing": [
+    "What is API testing?",
+    "What are HTTP methods (GET, POST, PUT, PATCH)?",
+    "Difference between Authentication and Authorization",
+    "What are status codes (200, 400, 500)?",
+    "Difference between 400 and 500 errors",
+    "What is API chaining?",
+    "How to validate API response?",
+    "How to handle API response validation in Postman?",
+    "What are CRUD operations?",
+    "What is schema validation?",
+    "What is idempotency?",
+    "How to test secured APIs?",
+    "How to handle API retries?",
+    "What is mocking in API testing?"
+  ],
+
+  "TestNG": [
+    "What is TestNG?",
+    "What are TestNG annotations?",
+    "What is testng.xml?",
+    "How to run test cases selectively?",
+    "How to run failed test cases?",
+    "How to perform parallel execution in TestNG?",
+    "What is priority in TestNG?",
+    "What is dependsOnMethods?",
+    "How to generate reports in TestNG?",
+    "What are listeners in TestNG?"
+  ],
+
+  "Framework / Automation": [
+    "What is automation framework?",
+    "Explain framework structure",
+    "What are components of a framework?",
+    "What is Page Object Model?",
+    "What is BDD framework?",
+    "What is Cucumber?",
+    "Difference between Scenario and Scenario Outline",
+    "What is Step Definition?",
+    "What is Gherkin?",
+    "What are hooks in Cucumber?",
+    "How to integrate Jenkins with automation framework?",
+    "What is CI/CD?",
+    "How to reduce flakiness in automation?",
+    "How to handle test failures in framework?",
+    "What is data-driven testing?"
+  ],
+
+  "Manual Testing": [
+    "What is STLC?",
+    "Difference between Smoke and Sanity testing",
+    "What is Regression testing?",
+    "What is RTM?",
+    "What is defect life cycle?",
+    "Difference between severity and priority",
+    "What is exploratory testing?",
+    "What is functional vs non-functional testing?",
+    "How to write test cases?",
+    "What is test scenario vs test case?",
+    "What is verification and validation?"
+  ],
+
+  "SQL": [
+    "What are joins in SQL?",
+    "Difference between INNER JOIN and LEFT JOIN",
+    "How to find duplicate records?",
+    "How to find second highest salary?",
+    "What is normalization and denormalization?",
+    "What is GROUP BY vs HAVING?",
+    "What is primary key vs foreign key?",
+    "What is indexing?",
+    "Write query to remove duplicates"
+  ],
+
+  "Agile / Process": [
+    "What is Agile methodology?",
+    "What are Agile ceremonies?",
+    "Difference between Agile and Waterfall",
+    "What is sprint?",
+    "What is retrospective?",
+    "What is user story?",
+    "What are entry and exit criteria?"
+  ],
+
+  "Scenario / Real-Time": [
+    "How do you handle flaky tests?",
+    "How do you debug test failures?",
+    "How do you decide what to automate?",
+    "How do you handle production bugs?",
+    "How do you perform root cause analysis?",
+    "How do you ensure test coverage?",
+    "How do you handle dynamic requirements?",
+    "How do you prioritize test cases?",
+    "How do you manage test data?",
+    "How do you reduce execution time?"
+  ]
+}

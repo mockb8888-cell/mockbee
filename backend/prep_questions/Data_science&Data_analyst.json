@@ -1,0 +1,35 @@
+{
+  "Data Analyst": [
+    "Which methods are used to design Fact and Dimension tables?",
+    "Which DAX functions did you use in your project?",
+    "What is DBMS, and what is your experience with it?",
+    "What is a Star Schema in Power BI or data modeling?",
+    "What is Row-Level Security (RLS) in Power BI?",
+    "What are the different types of data transformations available in Power Query?",
+    "What is the difference between a calculated column and a measure in Power BI?",
+    "What is cardinality in data modeling, and why is it important?",
+    "What are the different types of joins in SQL?",
+    "What is normalization and denormalization in databases?",
+    "How can you find duplicate records in a table using SQL?",
+    "What is the difference between RANK() and DENSE_RANK()?",
+    "What is the difference between UNION ALL and UNION in SQL?",
+    "What is the difference between DELETE, TRUNCATE, and DROP?",
+    "What are SQL triggers?",
+    "What is the difference between a VIEW and a TABLE?",
+    "What is the main difference between a Live Connection and an Extract in Tableau?",
+    "What is a Context Filter in Tableau?",
+    "What does a Fixed LOD Expression do?",
+    "What is a Dashboard in Tableau?",
+    "What does the MATCH function do in Excel?",
+    "What is VLOOKUP?",
+    "What is Conditional Formatting in Excel?",
+    "How do you write a SQL query to find success and failure rates?",
+    "How do you filter records for a specific city?"
+  ],
+  "Data Science": [
+    "What is SQL query optimization?",
+    "What is flat file integration?",
+    "What are data transformation layers?",
+    "How do you handle data anomalies?"
+  ]
+}

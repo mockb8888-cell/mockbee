@@ -10,7 +10,7 @@ import random
 
 # Load custom questions
 try:
-    with open(os.path.join(os.path.dirname(__file__), "processed_questions.json"), "r") as f:
+    with open(os.path.join(os.path.dirname(__file__), "prep_questions", "interview_question_bank.json"), "r") as f:
         CUSTOM_QUESTIONS = json.load(f)
 except Exception:
     CUSTOM_QUESTIONS = {}
@@ -94,18 +94,22 @@ Your job:
         q_target = mocker.PHASE_Q_TARGETS[phase]
         system_prompt = mocker.PHASE_PROMPTS[phase].format(role=req.role, level=req.level, q_target=q_target)
         
+        # Ensure we always enforce analyzing previous answers if it's not the very first question of the interview
+        if len(req.history) > 1:
+            system_prompt += "\n\nCRITICAL INSTRUCTION: First, carefully analyze the candidate's last answer and provide brief, constructive feedback before moving to the next point."
+
         # Enforce question count constraint
         if req.questions_in_phase >= q_target:
-            system_prompt += "\n\nCRITICAL INSTRUCTION: You have reached the required number of questions for this phase. DO NOT ask any more questions. ONLY say your transition sentence and end with [PHASE_COMPLETE]."
+            system_prompt += "\n\nCRITICAL INSTRUCTION: You have reached the required number of questions for this phase. DO NOT ask any more questions. ONLY provide your feedback on their last answer (if applicable), state your transition sentence, and end with [PHASE_COMPLETE]."
         else:
-            system_prompt += f"\n\nPROGRESS: You have asked {req.questions_in_phase} questions in this phase. The target is {q_target}. Ask the NEXT question now."
+            system_prompt += f"\n\nPROGRESS: You have asked {req.questions_in_phase} questions out of {q_target} in this phase. You MUST ask exactly ONE new question now."
 
         # Inject specific questions from JSON if available
         if phase == "technical" and req.questions_in_phase < q_target:
             role_key = next((k for k in CUSTOM_QUESTIONS.keys() if k.lower() in req.role.lower() or req.role.lower() in k.lower()), None)
-            if role_key and "General" in CUSTOM_QUESTIONS[role_key]:
-                q_list = CUSTOM_QUESTIONS[role_key]["General"]
-                if len(q_list) > 0:
+            if role_key:
+                q_list = CUSTOM_QUESTIONS[role_key]
+                if isinstance(q_list, list) and len(q_list) > 0:
                     # Pick a question using the index (modulo to prevent out of bounds)
                     q_idx = req.questions_in_phase % len(q_list)
                     specific_q = q_list[q_idx]
