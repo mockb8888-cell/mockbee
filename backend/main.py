@@ -4,6 +4,16 @@ from pydantic import BaseModel
 from typing import List, Dict, Optional, Any
 import db
 import mocker
+import json
+import os
+import random
+
+# Load custom questions
+try:
+    with open(os.path.join(os.path.dirname(__file__), "processed_questions.json"), "r") as f:
+        CUSTOM_QUESTIONS = json.load(f)
+except Exception:
+    CUSTOM_QUESTIONS = {}
 
 app = FastAPI(title="MockBee API")
 
@@ -62,6 +72,7 @@ class ChatRequest(BaseModel):
     level: str
     history: List[Dict[str, str]]
     phase: Optional[str] = "self_intro"
+    questions_in_phase: Optional[int] = 0
 
 @app.post("/api/interview/chat")
 def interview_chat(req: ChatRequest):
@@ -83,6 +94,23 @@ Your job:
         q_target = mocker.PHASE_Q_TARGETS[phase]
         system_prompt = mocker.PHASE_PROMPTS[phase].format(role=req.role, level=req.level, q_target=q_target)
         
+        # Enforce question count constraint
+        if req.questions_in_phase >= q_target:
+            system_prompt += "\n\nCRITICAL INSTRUCTION: You have reached the required number of questions for this phase. DO NOT ask any more questions. ONLY say your transition sentence and end with [PHASE_COMPLETE]."
+        else:
+            system_prompt += f"\n\nPROGRESS: You have asked {req.questions_in_phase} questions in this phase. The target is {q_target}. Ask the NEXT question now."
+
+        # Inject specific questions from JSON if available
+        if phase == "technical" and req.questions_in_phase < q_target:
+            role_key = next((k for k in CUSTOM_QUESTIONS.keys() if k.lower() in req.role.lower() or req.role.lower() in k.lower()), None)
+            if role_key and "General" in CUSTOM_QUESTIONS[role_key]:
+                q_list = CUSTOM_QUESTIONS[role_key]["General"]
+                if len(q_list) > 0:
+                    # Pick a question using the index (modulo to prevent out of bounds)
+                    q_idx = req.questions_in_phase % len(q_list)
+                    specific_q = q_list[q_idx]
+                    system_prompt += f"\n\nCRITICAL INSTRUCTION: For this turn, you MUST ask the following technical question:\n\"{specific_q}\""
+
         if phase != "self_intro":
             system_prompt += "\n\nCRITICAL RULE: DO NOT ask the candidate to introduce themselves or ask for their background. That was already done. Focus ONLY on your current phase."
 

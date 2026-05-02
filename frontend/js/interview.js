@@ -57,6 +57,7 @@ const ROLE_ICON_MAPPING = {
 let roleName = "General Role";
 let currentPhaseIndex = 0;
 let questionCount = 0;       // total questions asked across all phases
+let questionsInCurrentPhase = 0;
 let totalQuestions = 22;     // sum of all PHASE_Q_TARGETS
 let isInterviewComplete = false;
 let isAwaitingAnswer = false;
@@ -197,6 +198,7 @@ function requestAIQuestion() {
             level: "Mid-level",
             history: conversationHistory,
             phase: currentPhase,
+            questions_in_phase: questionsInCurrentPhase,
         })
     })
     .then(r => r.json())
@@ -224,6 +226,7 @@ function requestAIQuestion() {
 
             // Advance phase
             currentPhaseIndex++;
+            questionsInCurrentPhase = 0; // Reset for the next phase
             if (currentPhaseIndex < PHASES.length) {
                 setTimeout(() => {
                     showPhaseLabel(PHASES[currentPhaseIndex]);
@@ -237,6 +240,7 @@ function requestAIQuestion() {
 
         // Normal question — display and enable input
         questionCount++;
+        questionsInCurrentPhase++;
         updateProgress();
         lastAIQuestion = reply; // save for transcript
         sendAIMessage(`**Q${questionCount}:** ${reply}`);
@@ -305,6 +309,7 @@ function handleUserSubmit() {
             level: "Mid-level",
             history: conversationHistory,
             phase: currentPhase,
+            questions_in_phase: questionsInCurrentPhase,
         })
     })
     .then(r => r.json())
@@ -333,6 +338,7 @@ function handleUserSubmit() {
             speakText(cleanReply);
 
             currentPhaseIndex++;
+            questionsInCurrentPhase = 0; // Reset for next phase
             if (currentPhaseIndex < PHASES.length) {
                 setTimeout(() => {
                     showPhaseLabel(PHASES[currentPhaseIndex]);
@@ -347,6 +353,7 @@ function handleUserSubmit() {
         // Normal reply — feedback + next question embedded
         // The AI gives feedback and asks the next question in one message
         questionCount++;
+        questionsInCurrentPhase++;
         updateProgress();
         lastAIQuestion = reply; // save for next transcript entry
         sendAIMessage(reply, true, questionCount);

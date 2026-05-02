@@ -2,7 +2,7 @@
    MockBee - Central API Configuration
    ============================================
    AUTO-DETECTS environment:
-   - Local dev  → http://127.0.0.1:8080
+   - Local dev  → http://127.0.0.1:8000
    - Live site  → https://mockbee.onrender.com
    ============================================ */
 
@@ -12,5 +12,5 @@ const _isLocal = (
 );
 
 const API_BASE = _isLocal
-    ? 'http://127.0.0.1:8080'
+    ? 'http://127.0.0.1:8000'
     : 'https://mockbee.onrender.com';
