@@ -66,6 +66,7 @@ let interviewTranscript = [];
 let conversationHistory = []; // full chat history sent to backend
 let currentMode = "standard";
 let lastAIQuestion = ""; // tracks the most recent AI question for accurate transcript
+let isVoiceMuted = false;
 
 // ── Compute total question count ──
 totalQuestions = Object.values(PHASE_Q_TARGETS).reduce((a, b) => a + b, 0);
@@ -151,6 +152,20 @@ document.addEventListener('DOMContentLoaded', () => {
     // Setup voice
     setupVoiceRecognition();
 
+    // Setup mute button
+    const muteBtn = document.getElementById('mute-btn');
+    if (muteBtn) {
+        muteBtn.addEventListener('click', () => {
+            isVoiceMuted = !isVoiceMuted;
+            if (isVoiceMuted) {
+                muteBtn.innerHTML = '<i class="fas fa-volume-mute" style="color: #ef4444;"></i>';
+                if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+            } else {
+                muteBtn.innerHTML = '<i class="fas fa-volume-up"></i>';
+            }
+        });
+    }
+
     // Start interview — show welcome + phase label + first AI question
     startInterview();
 });
@@ -162,26 +177,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function startInterview() {
     // Welcome message
-    sendAIMessage(`Welcome to your **${roleName}** interview. I'm your AI interviewer for today. We'll go through a structured 6-phase interview. Let's begin!`);
+    sendAIMessage(`Welcome to your **${roleName}** interview. I'm your AI interviewer for today. Let's begin!`);
 
-    // Show phase label
+    // Initial silent prompt to ensure Groq gets a user message
+    conversationHistory.push({ role: "user", content: "I am ready to begin the interview. Please ask the first question." });
+
     setTimeout(() => {
-        showPhaseLabel(PHASES[currentPhaseIndex]);
-
-        // Ask AI for first question
-        setTimeout(() => {
-            requestAIQuestion();
-        }, 800);
-    }, 2000);
+        requestAIQuestion();
+    }, 1500);
 }
 
 function showPhaseLabel(phase) {
-    const chatBox = document.getElementById('chat-box');
-    const phaseDiv = document.createElement('div');
-    phaseDiv.className = "message phase-label-msg";
-    phaseDiv.innerHTML = `<div class="phase-label-bubble">${PHASE_LABELS[phase]}</div>`;
-    chatBox.appendChild(phaseDiv);
-    scrollToBottom();
+    // Intentionally empty: user requested to remove the phase indication popup message
 }
 
 function requestAIQuestion() {
@@ -201,11 +208,15 @@ function requestAIQuestion() {
             questions_in_phase: questionsInCurrentPhase,
         })
     })
-    .then(r => r.json())
+    .then(r => {
+        if (!r.ok) throw new Error("API responded with an error");
+        return r.json();
+    })
     .then(data => {
         removeTypingIndicator();
 
-        const reply = data.reply || "Please tell me about yourself.";
+        const reply = data.reply;
+        if (!reply) throw new Error("No reply from AI");
 
         // Add to conversation history
         conversationHistory.push({ role: "assistant", content: reply });
@@ -227,11 +238,12 @@ function requestAIQuestion() {
             // Advance phase
             currentPhaseIndex++;
             questionsInCurrentPhase = 0; // Reset for the next phase
+            
+            // Add a silent user prompt so the AI knows we are ready, satisfying role alternation
+            conversationHistory.push({ role: "user", content: `I am ready. Please proceed to the next phase and ask the first question.` });
+
             if (currentPhaseIndex < PHASES.length) {
-                setTimeout(() => {
-                    showPhaseLabel(PHASES[currentPhaseIndex]);
-                    setTimeout(() => requestAIQuestion(), 1000);
-                }, 2000);
+                setTimeout(() => requestAIQuestion(), 1500);
             } else {
                 finishInterview();
             }
@@ -251,7 +263,6 @@ function requestAIQuestion() {
         removeTypingIndicator();
         console.error("AI Error:", err);
         sendAIMessage("⚠️ The AI server is starting up. Please wait ~30 seconds and click **Retry** below.");
-        // Show a retry button
         setTimeout(() => {
             const chatBox = document.getElementById('chat-box');
             const retryDiv = document.createElement('div');
@@ -260,7 +271,7 @@ function requestAIQuestion() {
             chatBox.appendChild(retryDiv);
             scrollToBottom();
         }, 400);
-        enableInput();
+        // Do not enable input here, user must click Retry
     });
 }
 
@@ -283,8 +294,10 @@ function handleUserSubmit() {
     disableInput();
     userInput.value = "";
 
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+
     // Add user message to chat
-    addUserMessage(message);
+    const userMsgElem = addUserMessage(message);
 
     // Add to conversation history
     conversationHistory.push({ role: "user", content: message });
@@ -312,12 +325,16 @@ function handleUserSubmit() {
             questions_in_phase: questionsInCurrentPhase,
         })
     })
-    .then(r => r.json())
+    .then(r => {
+        if (!r.ok) throw new Error("API responded with an error");
+        return r.json();
+    })
     .then(data => {
         removeTypingIndicator();
         isAIProcessing = false;
 
-        const reply = data.reply || "Thank you.";
+        const reply = data.reply;
+        if (!reply) throw new Error("No reply from AI");
 
         // Add to conversation history
         conversationHistory.push({ role: "assistant", content: reply });
@@ -339,11 +356,12 @@ function handleUserSubmit() {
 
             currentPhaseIndex++;
             questionsInCurrentPhase = 0; // Reset for next phase
+            
+            // Silent user prompt to keep roles alternating
+            conversationHistory.push({ role: "user", content: `I am ready. Please proceed to the next phase and ask the first question.` });
+
             if (currentPhaseIndex < PHASES.length) {
-                setTimeout(() => {
-                    showPhaseLabel(PHASES[currentPhaseIndex]);
-                    setTimeout(() => requestAIQuestion(), 1000);
-                }, 2000);
+                setTimeout(() => requestAIQuestion(), 1500);
             } else {
                 finishInterview();
             }
@@ -364,7 +382,16 @@ function handleUserSubmit() {
         removeTypingIndicator();
         isAIProcessing = false;
         console.error("AI Error:", err);
-        sendAIMessage("⚠️ Connection lost. The server may be starting up — please wait a moment and try submitting again.");
+        sendAIMessage("⚠️ Connection lost or server waking up. Please wait ~30 seconds and try submitting again.");
+        
+        // Revert state so the user can retry without breaking the interview
+        conversationHistory.pop();
+        interviewTranscript.pop();
+        if (userMsgElem) userMsgElem.remove();
+        
+        const userInputElem = document.getElementById('user-input');
+        if (userInputElem) userInputElem.value = message;
+        
         enableInput();
     });
 }
@@ -389,9 +416,16 @@ function setupVoiceRecognition() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
-        if (micBtn) micBtn.title = "Voice not supported in this browser";
+        if (micBtn) {
+            micBtn.title = "Voice not supported in this browser";
+            micBtn.style.opacity = "0.5";
+            micBtn.style.cursor = "not-allowed";
+        }
         return;
     }
+
+    // Update title from "coming soon" to active
+    if (micBtn) micBtn.title = "Click to speak (Microphone)";
 
     // Recording indicator
     let indicator = document.querySelector('.recording-indicator');
@@ -408,6 +442,8 @@ function setupVoiceRecognition() {
     recognition.interimResults = true;
     recognition.lang = 'en-US';
 
+    let originalValue = '';
+
     micBtn.addEventListener('click', (e) => {
         e.preventDefault();
 
@@ -418,14 +454,24 @@ function setupVoiceRecognition() {
             recognition.stop();
         } else {
             isListening = true;
-            recognition.start();
+            try {
+                recognition.start();
+            } catch(err) {
+                console.error("Recognition start error:", err);
+            }
         }
     });
 
     recognition.onstart = () => {
         micBtn.classList.add('active');
         if (indicator) indicator.classList.add('active');
-        userInput.placeholder = "🎙️ Listening... Speak your answer naturally.";
+        userInput.placeholder = "🎙️ Listening... Speak naturally.";
+        userInput.focus();
+        
+        originalValue = userInput.value;
+        if (originalValue && !originalValue.endsWith(' ')) {
+            originalValue += ' ';
+        }
     };
 
     recognition.onresult = (event) => {
@@ -441,15 +487,13 @@ function setupVoiceRecognition() {
             }
         }
 
-        // Append final transcript; show interim as preview
+        // Add any final text to our baseline
         if (finalTranscript) {
-            userInput.value = (userInput.value + finalTranscript).trim();
-        }
-        // Visual hint for interim
-        if (interimTranscript && !finalTranscript) {
-            userInput.placeholder = `🎙️ "${interimTranscript}"`;
+            originalValue += finalTranscript;
         }
 
+        // Live update the actual input field so the user sees their words forming
+        userInput.value = originalValue + interimTranscript;
         userInput.scrollLeft = userInput.scrollWidth;
     };
 
@@ -466,9 +510,18 @@ function setupVoiceRecognition() {
     recognition.onerror = (event) => {
         if (event.error === 'no-speech') return;
         if (event.error === 'aborted') return;
+        
         console.error("Speech Recognition Error:", event.error);
+        if (event.error === 'not-allowed') {
+            alert("Microphone access was denied. Please allow microphone permissions in your browser to use voice input.");
+        }
+        
         isListening = false;
         try { recognition.stop(); } catch(e) {}
+        
+        micBtn.classList.remove('active');
+        if (indicator) indicator.classList.remove('active');
+        userInput.placeholder = "Type your answer here...";
     };
 }
 
@@ -476,10 +529,11 @@ function setupVoiceRecognition() {
  * Text-to-Speech: Read AI questions aloud
  */
 function speakText(text) {
-    if (!('speechSynthesis' in window)) return;
+    if (!('speechSynthesis' in window) || isVoiceMuted) return;
 
-    // Cancel any ongoing speech
-    window.speechSynthesis.cancel();
+    // We do NOT cancel ongoing speech here anymore, so consecutive
+    // messages (like phase complete + next question) will queue up
+    // and play back-to-back naturally.
 
     // Clean up text — remove markdown, markers
     let clean = text
@@ -553,6 +607,7 @@ function addUserMessage(text) {
     `;
     chatBox.appendChild(messageDiv);
     scrollToBottom();
+    return messageDiv;
 }
 
 function showTypingIndicator() {
