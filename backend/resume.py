@@ -8,6 +8,8 @@ AI-Powered ATS Resume Builder
 
 import os, sys, json, subprocess, datetime
 
+if sys.stdout.encoding.lower() != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
 # ── Auto-install missing packages ─────────────────────────────────────────────
 def _ensure(pkg, import_as=None):
     try:
@@ -18,7 +20,7 @@ def _ensure(pkg, import_as=None):
                                 "--break-system-packages"])
 
 print("Checking dependencies…")
-for pkg, imp in [("reportlab", None), ("python-docx", "docx"), ("requests", None)]:
+for pkg, imp in [("reportlab", None), ("python-docx", "docx"), ("requests", None), ("google-genai", "google.genai"), ("python-dotenv", "dotenv")]:
     _ensure(pkg, imp)
 print("Dependencies ready.\n")
 
@@ -218,11 +220,23 @@ def collect_optional():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  AI Enhancement (Ollama — optional)
+#  AI Enhancement (Google Gemini)
 # ══════════════════════════════════════════════════════════════════════════════
-OLLAMA_URL = "http://localhost:11434/api/generate"
+from google import genai as _genai
+from google.genai import types as _genai_types
+from dotenv import load_dotenv
+
+# Try to load from sibling .env if available
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+_genai_client = _genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
 def ai_enhance(resume_data: dict) -> dict:
+    if not GEMINI_API_KEY:
+        print(f"  \033[93m⚠  GEMINI_API_KEY not found in environment. Skipping AI enhancement.\033[0m")
+        return {}
+
     prompt_text = f"""You are an expert resume writer specialising in ATS-optimised content.
 Given the following resume data in JSON, rewrite ONLY these keys to be more
 professional, impactful, and ATS-friendly. Return ONLY valid JSON with these exact keys:
@@ -235,15 +249,18 @@ Resume Data:
 
 Return ONLY a JSON object. No explanations, no markdown fences."""
     try:
-        resp = requests.post(OLLAMA_URL,
-                             json={"model": "mistral", "prompt": prompt_text, "stream": False},
-                             timeout=60)
-        if resp.status_code == 200:
-            text = resp.json().get("response", "").strip()
-            text = text.lstrip("```json").lstrip("```").rstrip("```").strip()
-            return json.loads(text)
-    except Exception:
-        pass
+        resp = _genai_client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt_text,
+            config=_genai_types.GenerateContentConfig(
+                response_mime_type="application/json",
+            ),
+        )
+        text = resp.text.strip()
+        text = text.lstrip("```json").lstrip("```").rstrip("```").strip()
+        return json.loads(text)
+    except Exception as e:
+        print(f"  \033[91m⚠  Gemini AI Error: {e}\033[0m")
     return {}
 
 
@@ -730,7 +747,7 @@ def main():
 
     # ── AI Enhancement ────────────────────────────────────────────────────────
     print(f"\n{C.MAGENTA}🤖  Attempting AI content enhancement…{C.RESET}")
-    print(f"{C.DIM}   (Requires Ollama locally. Silently skipped if unavailable.){C.RESET}")
+    print(f"{C.DIM}   (Requires GEMINI_API_KEY locally. Silently skipped if unavailable.){C.RESET}")
     enhanced = ai_enhance(data)
     if enhanced:
         print(f"{C.GREEN}✅  AI enhancement applied!{C.RESET}")

@@ -10,15 +10,32 @@
 import os, sys, json, time, datetime
 from dotenv import load_dotenv
 
+if sys.stdout.encoding.lower() != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
+
 load_dotenv()
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-import groq
-client = groq.Groq(api_key=GROQ_API_KEY)
-MODEL = "llama-3.3-70b-versatile"
+from google import genai
+from google.genai import types as genai_types
+
+_genai_client = None
+def _get_client():
+    global _genai_client
+    if _genai_client is None and GEMINI_API_KEY:
+        _genai_client = genai.Client(api_key=GEMINI_API_KEY)
+    return _genai_client
+
+MODELS = [
+    "gemini-flash-lite-latest",
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite",
+    "gemini-1.5-flash"
+]
 
 try:
     import pyttsx3
@@ -340,35 +357,68 @@ def listen_microphone(timeout=10, phrase_limit=30):
         print(clr(f"  ⚠  Service error: {e}", C.RED)); return None
 
 
-# ── Groq AI ─────────────────────────────────────────────────────────────────
+# ── Gemini AI ───────────────────────────────────────────────────────────────
 def ai_chat(system, history):
-    messages = [{"role": "system", "content": system}]
-    for m in history:
-        role = "user" if m["role"] == "user" else "assistant"
-        messages.append({"role": role, "content": m["content"]})
-    
-    completion = client.chat.completions.create(
-        model=MODEL,
-        messages=messages,
-    )
-    return completion.choices[0].message.content.strip()
+    if not GEMINI_API_KEY:
+        raise Exception("GEMINI_API_KEY not configured")
+
+    client = _get_client()
+
+    # Build history for the chat (all messages except the last user message)
+    formatted_history = []
+    for m in history[:-1]:
+        role = "user" if m["role"] == "user" else "model"
+        formatted_history.append(
+            genai_types.Content(role=role, parts=[genai_types.Part(text=m["content"])])
+        )
+
+    last_err = None
+    for model_name in MODELS:
+        try:
+            chat = client.chats.create(
+                model=model_name,
+                config=genai_types.GenerateContentConfig(system_instruction=system),
+                history=formatted_history,
+            )
+            response = chat.send_message(history[-1]["content"])
+            return response.text.strip()
+        except Exception as e:
+            last_err = e
+            if "429" not in str(e):
+                raise e
+    raise last_err
 
 def ai_evaluate(role, level, history):
+    if not GEMINI_API_KEY:
+        raise Exception("GEMINI_API_KEY not configured")
+
+    client = _get_client()
     transcript = "\n".join(
         f"{'INTERVIEWER' if m['role']=='assistant' else 'CANDIDATE'}: {m['content']}"
         for m in history)
     prompt = EVAL_PROMPT.format(role=role, level=level, transcript=transcript)
-    
-    completion = client.chat.completions.create(
-        model=MODEL,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    raw = completion.choices[0].message.content.strip()
-    
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"): raw = raw[4:].strip()
-    return json.loads(raw)
+
+    last_err = None
+    for model_name in MODELS:
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=genai_types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                ),
+            )
+            raw = response.text.strip()
+
+            if raw.startswith("```"):
+                raw = raw.split("```")[1]
+                if raw.startswith("json"): raw = raw[4:].strip()
+            return json.loads(raw)
+        except Exception as e:
+            last_err = e
+            if "429" not in str(e):
+                raise e
+    raise last_err
 
 
 # ── Display ───────────────────────────────────────────────────────────────────
@@ -501,8 +551,8 @@ def choose_mode():
 def run_interview():
     banner()
 
-    if not GROQ_API_KEY:
-        print(clr("\n  ⚠  Set your GROQ_API_KEY environment variable!", C.RED, C.BOLD))
+    if not GEMINI_API_KEY:
+        print(clr("\n  ⚠  Set your GEMINI_API_KEY environment variable!", C.RED, C.BOLD))
         sys.exit(1)
 
     # ── Identify user ─────────────────────────────────────────────────────────
@@ -556,7 +606,7 @@ def run_interview():
         ai_reply = ai_chat(system, [{"role": "user", "content": "Please begin the interview."}])
         questions_in_phase += 1
     except Exception as e:
-        print(clr(f"\n  ✗  Could not connect to Groq: {e}", C.RED))
+        print(clr(f"\n  ✗  Could not connect to Gemini: {e}", C.RED))
         sys.exit(1)
 
     history.append({"role": "assistant", "content": ai_reply})

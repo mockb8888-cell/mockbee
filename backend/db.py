@@ -4,10 +4,10 @@ All collections live in the 'prepai' database.
 
 Collections
 ───────────
-  users            – keyed by email (the canonical user ID)
+  users              – keyed by email (the canonical user ID)
   interview_sessions – mock interview sessions & evaluations
   interview_messages – per-turn chat log
-  resumes          – resume data + file paths, linked to user email
+  resumes            – resume data + file paths, linked to user email
 """
 
 from __future__ import annotations

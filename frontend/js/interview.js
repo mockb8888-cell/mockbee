@@ -208,8 +208,11 @@ function requestAIQuestion() {
             questions_in_phase: questionsInCurrentPhase,
         })
     })
-    .then(r => {
-        if (!r.ok) throw new Error("API responded with an error");
+    .then(async r => {
+        if (!r.ok) {
+            const errData = await r.json().catch(() => ({}));
+            throw new Error(errData.detail || "API responded with an error");
+        }
         return r.json();
     })
     .then(data => {
@@ -262,7 +265,13 @@ function requestAIQuestion() {
     .catch(err => {
         removeTypingIndicator();
         console.error("AI Error:", err);
-        sendAIMessage("⚠️ The AI server is starting up. Please wait ~30 seconds and click **Retry** below.");
+        let errorMsg = "⚠️ The AI server is starting up. Please wait ~30 seconds and click **Retry** below.";
+        if (err.message && err.message.includes("429")) {
+            errorMsg = "⚠️ AI API Quota Exceeded. Please try again later or check your API key limit.";
+        } else if (err.message && err.message !== "API responded with an error" && err.message !== "Failed to fetch") {
+            errorMsg = `⚠️ Error: ${err.message}. Please click **Retry** below.`;
+        }
+        sendAIMessage(errorMsg);
         setTimeout(() => {
             const chatBox = document.getElementById('chat-box');
             const retryDiv = document.createElement('div');
@@ -325,8 +334,11 @@ function handleUserSubmit() {
             questions_in_phase: questionsInCurrentPhase,
         })
     })
-    .then(r => {
-        if (!r.ok) throw new Error("API responded with an error");
+    .then(async r => {
+        if (!r.ok) {
+            const errData = await r.json().catch(() => ({}));
+            throw new Error(errData.detail || "API responded with an error");
+        }
         return r.json();
     })
     .then(data => {
@@ -382,7 +394,13 @@ function handleUserSubmit() {
         removeTypingIndicator();
         isAIProcessing = false;
         console.error("AI Error:", err);
-        sendAIMessage("⚠️ Connection lost or server waking up. Please wait ~30 seconds and try submitting again.");
+        let errorMsg = "⚠️ Connection lost or server waking up. Please wait ~30 seconds and try submitting again.";
+        if (err.message && err.message.includes("429")) {
+            errorMsg = "⚠️ AI API Quota Exceeded. Please try again later or check your API key limit.";
+        } else if (err.message && err.message !== "API responded with an error" && err.message !== "Failed to fetch") {
+            errorMsg = `⚠️ Error: ${err.message}. Please try submitting again.`;
+        }
+        sendAIMessage(errorMsg);
         
         // Revert state so the user can retry without breaking the interview
         conversationHistory.pop();
