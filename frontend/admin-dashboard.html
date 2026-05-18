@@ -407,6 +407,7 @@
         <div class="table-header">
             <h2><i class="fas fa-user-group" style="color:var(--gold-dark);margin-right:8px"></i>Registered Users</h2>
             <div style="display:flex;gap:10px;align-items:center">
+                <button class="refresh-btn" id="add-student-btn" style="background:var(--green);color:#fff;border:none;"><i class="fas fa-plus"></i> Add Student</button>
                 <div class="search-box">
                     <i class="fas fa-search"></i>
                     <input type="text" id="search-users" placeholder="Search by email or name...">
@@ -423,9 +424,16 @@
     <div class="table-container" id="tab-sessions" style="display:none">
         <div class="table-header">
             <h2><i class="fas fa-clipboard-list" style="color:var(--gold-dark);margin-right:8px"></i>Interview Sessions</h2>
-            <div class="search-box">
-                <i class="fas fa-search"></i>
-                <input type="text" id="search-sessions" placeholder="Search by email or role...">
+            <div style="display:flex;gap:10px;align-items:center">
+                <select id="filter-user-type" style="padding:8px 12px; border-radius:8px; border:1px solid var(--cream-dark); font-family:'Inter'; outline:none; font-size: 0.85rem; color: var(--text-dark);">
+                    <option value="ALL">All Users</option>
+                    <option value="PREMIUM">Students (Admin Created)</option>
+                    <option value="PUBLIC">Public Users (Self Registered)</option>
+                </select>
+                <div class="search-box">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="search-sessions" placeholder="Search by email or role...">
+                </div>
             </div>
         </div>
         <div id="sessions-table-wrap">
@@ -439,6 +447,29 @@
             <button onclick="document.getElementById('overview-modal').style.display='none'" style="position:absolute; top:20px; right:20px; border:none; background:none; cursor:pointer; font-size:1.4rem; color:#666; transition: color 0.2s;"><i class="fas fa-times"></i></button>
             <h2 style="margin-bottom:20px; font-weight:800; font-size: 1.5rem; color: var(--navy);">Report Overview</h2>
             <div id="overview-content" style="font-size:0.95rem; line-height:1.6; color:var(--text-dark);"></div>
+        </div>
+    </div>
+
+    <!-- Add Student Modal -->
+    <div id="add-student-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:1000; align-items:center; justify-content:center; backdrop-filter: blur(4px);">
+        <div style="background:#fff; width:450px; border-radius:14px; padding:30px; position:relative; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
+            <button onclick="document.getElementById('add-student-modal').style.display='none'" style="position:absolute; top:20px; right:20px; border:none; background:none; cursor:pointer; font-size:1.4rem; color:#666;"><i class="fas fa-times"></i></button>
+            <h2 style="margin-bottom:20px; font-weight:800; font-size: 1.5rem; color: var(--navy);">Add Student</h2>
+            <form id="add-student-form">
+                <div style="margin-bottom: 15px;">
+                    <label style="display:block; margin-bottom:5px; font-weight:600; font-size:0.9rem;">Name</label>
+                    <input type="text" id="student-name" required style="width:100%; padding:10px; border:1px solid #ddd; border-radius:8px; font-family:'Inter'; outline:none;">
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label style="display:block; margin-bottom:5px; font-weight:600; font-size:0.9rem;">Email</label>
+                    <input type="email" id="student-email" required style="width:100%; padding:10px; border:1px solid #ddd; border-radius:8px; font-family:'Inter'; outline:none;">
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <label style="display:block; margin-bottom:5px; font-weight:600; font-size:0.9rem;">Password</label>
+                    <input type="text" id="student-password" required style="width:100%; padding:10px; border:1px solid #ddd; border-radius:8px; font-family:'Inter'; outline:none;">
+                </div>
+                <button type="submit" style="width:100%; background:var(--navy); color:#fff; padding:12px; border:none; border-radius:8px; font-weight:700; cursor:pointer;">Create Student Account</button>
+            </form>
         </div>
     </div>
 
@@ -531,6 +562,7 @@
                         <th>#</th>
                         <th>Email</th>
                         <th>Name</th>
+                        <th>Role</th>
                         <th>Created</th>
                         <th>Last Seen</th>
                         <th>Actions</th>
@@ -545,6 +577,7 @@
                     <td>${i + 1}</td>
                     <td class="email-col">${u.email}</td>
                     <td>${u.name || '—'}</td>
+                    <td><span class="role-tag">${u.role || 'PUBLIC'}</span></td>
                     <td>${created}</td>
                     <td>${lastSeen}</td>
                     <td>
@@ -572,7 +605,8 @@
                     <tr>
                         <th>#</th>
                         <th>User Email</th>
-                        <th>Role</th>
+                        <th>Role (Interview)</th>
+                        <th>User Type</th>
                         <th>Score</th>
                         <th>Date</th>
                         <th>Saved At</th>
@@ -599,6 +633,7 @@
                     <td>${i + 1}</td>
                     <td class="email-col">${s.user_email || '—'}</td>
                     <td><span class="role-tag">${s.role || '—'}</span></td>
+                    <td><span class="role-tag" style="${s.user_role === 'PREMIUM' ? 'background:#E8F5E9; color:#2E7D32' : ''}">${s.user_role === 'PREMIUM' ? 'Student' : 'Public'}</span></td>
                     <td><span class="score-badge ${badgeClass}">${badgeText}</span></td>
                     <td>${date}</td>
                     <td>${savedAt}</td>
@@ -620,7 +655,7 @@
             wrap.innerHTML = html;
         }
 
-        // ── Search ──
+        // ── Search & Filters ──
         document.getElementById('search-users').addEventListener('input', (e) => {
             const q = e.target.value.toLowerCase();
             const filtered = allUsers.filter(u =>
@@ -630,17 +665,67 @@
             renderUsersTable(filtered);
         });
 
-        document.getElementById('search-sessions').addEventListener('input', (e) => {
-            const q = e.target.value.toLowerCase();
-            const filtered = allSessions.filter(s =>
-                (s.user_email || '').toLowerCase().includes(q) ||
-                (s.role || '').toLowerCase().includes(q)
-            );
+        function applySessionsFilter() {
+            const q = document.getElementById('search-sessions').value.toLowerCase();
+            const type = document.getElementById('filter-user-type').value;
+            
+            const filtered = allSessions.filter(s => {
+                const matchesSearch = (s.user_email || '').toLowerCase().includes(q) || (s.role || '').toLowerCase().includes(q);
+                const matchesType = type === 'ALL' || s.user_role === type;
+                return matchesSearch && matchesType;
+            });
             renderSessionsTable(filtered);
-        });
+        }
+
+        document.getElementById('search-sessions').addEventListener('input', applySessionsFilter);
+        document.getElementById('filter-user-type').addEventListener('change', applySessionsFilter);
 
         // ── Refresh ──
         document.getElementById('refresh-btn').addEventListener('click', loadData);
+
+        // ── Add Student ──
+        document.getElementById('add-student-btn').addEventListener('click', () => {
+            document.getElementById('add-student-modal').style.display = 'flex';
+        });
+
+        document.getElementById('add-student-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const btn = e.target.querySelector('button');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating...';
+            btn.disabled = true;
+
+            const reqData = {
+                name: document.getElementById('student-name').value,
+                email: document.getElementById('student-email').value,
+                password: document.getElementById('student-password').value,
+                key: ADMIN_KEY
+            };
+
+            fetch(`${API_BASE}/api/admin/users`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(reqData)
+            })
+            .then(res => res.json())
+            .then(data => {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+                if (data.status === 'success') {
+                    alert('Student created successfully!');
+                    document.getElementById('add-student-modal').style.display = 'none';
+                    e.target.reset();
+                    loadData();
+                } else {
+                    alert('Error: ' + data.detail);
+                }
+            })
+            .catch(err => {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+                alert('Failed to create student. Is the backend running?');
+            });
+        });
 
         // ── Delete User ──
         function deleteUser(email) {

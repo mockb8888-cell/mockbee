@@ -45,6 +45,7 @@
             padding: 25px 20px; /* Reduced from 40px */
             border-radius: 15px; /* More professional radius */
             text-align: center; 
+            cursor: pointer;
             transition: all 0.3s cubic-bezier(0.165, 0.84, 0.44, 1); 
             box-shadow: 0 4px 15px rgba(0,0,0,0.02);
         }
@@ -85,38 +86,39 @@
             background: #000; 
             transform: scale(1.02);
         }
+        .card-action {
+            display: flex;
+            justify-content: center;
+        }
     </style>
 </head>
 <body>
     <h2>Top Company Interview Prep</h2>
-    <p class="subtitle">Target specific companies and practice with their real-world interview questions and patterns.</p>
+    <p class="subtitle">Open company-specific question banks and review previous interview questions by topic.</p>
     
     <div class="company-grid">
-        <div class="company-card">
+        <div class="company-card" data-company="Google">
             <i class="fab fa-google"></i>
             <h3>Google</h3>
             <p>Master algorithmic problem solving and system design.</p>
-            <div style="display: flex; gap: 10px; justify-content: center;">
-                <button class="btn-prep" onclick="location.href='company-topics.html?company=Google&mode=practice'">Practice Mode</button>
-                <button class="btn-prep" style="background:#B09E93; color:#fff;" onclick="location.href='company-topics.html?company=Google&mode=view'">View Mode</button>
+            <div class="card-action">
+                <button class="btn-prep">View Questions</button>
             </div>
         </div>
-        <div class="company-card">
+        <div class="company-card" data-company="Amazon">
             <i class="fab fa-amazon"></i>
             <h3>Amazon</h3>
             <p>Focus on Leadership Principles and Behavioral questions.</p>
-            <div style="display: flex; gap: 10px; justify-content: center;">
-                <button class="btn-prep" onclick="location.href='company-topics.html?company=Amazon&mode=practice'">Practice Mode</button>
-                <button class="btn-prep" style="background:#B09E93; color:#fff;" onclick="location.href='company-topics.html?company=Amazon&mode=view'">View Mode</button>
+            <div class="card-action">
+                <button class="btn-prep">View Questions</button>
             </div>
         </div>
-        <div class="company-card">
+        <div class="company-card" data-company="Meta">
             <i class="fab fa-meta"></i>
             <h3>Meta</h3>
             <p>Master product architecture and data structures.</p>
-            <div style="display: flex; gap: 10px; justify-content: center;">
-                <button class="btn-prep" onclick="location.href='company-topics.html?company=Meta&mode=practice'">Practice Mode</button>
-                <button class="btn-prep" style="background:#B09E93; color:#fff;" onclick="location.href='company-topics.html?company=Meta&mode=view'">View Mode</button>
+            <div class="card-action">
+                <button class="btn-prep">View Questions</button>
             </div>
         </div>
     </div>
@@ -126,8 +128,15 @@
             const subscribedPlan = localStorage.getItem('mockbee_subscribed_plan');
             const isElite = isSubscribed && subscribedPlan === 'pro';
 
+            const cards = document.querySelectorAll('.company-card');
+            cards.forEach(card => {
+                card.addEventListener('click', () => {
+                    const company = card.dataset.company;
+                    window.location.href = `google-questions.html?company=${encodeURIComponent(company)}`;
+                });
+            });
+
             if (!isElite) {
-                const cards = document.querySelectorAll('.company-card');
                 cards.forEach(card => {
                     card.classList.add('locked-segment');
                     

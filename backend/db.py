@@ -39,12 +39,12 @@ def _now() -> str:
 #  USERS
 # ══════════════════════════════════════════════════════════════════════════════
 
-def upsert_user(email: str, name: str = "") -> dict:
+def upsert_user(email: str, name: str = "", role: str = "PUBLIC", created_by: str = None) -> dict:
     """Create or update a user record. Returns the user document."""
     col = _col("users")
     col.update_one(
         {"_id": email},
-        {"$setOnInsert": {"_id": email, "name": name, "created_at": _now()},
+        {"$setOnInsert": {"_id": email, "name": name, "role": role, "created_by": created_by, "created_at": _now()},
          "$set": {"last_seen": _now()}},
         upsert=True,
     )

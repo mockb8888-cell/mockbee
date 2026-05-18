@@ -15,6 +15,63 @@ try:
 except Exception:
     CUSTOM_QUESTIONS = {}
 
+COMPANY_PREP_COMPANIES = {"google", "amazon", "meta"}
+COMPANY_QA_FILES = {
+    "amazon": "from_amazon.json",
+    "google": "from_google.json",
+    "meta": "from_meta.json",
+}
+
+def _normalise_prep_item(item: Any) -> dict:
+    if isinstance(item, dict):
+        return {
+            "id": item.get("id"),
+            "year": item.get("year"),
+            "company": str(item.get("company") or "").strip(),
+            "category": str(item.get("category") or item.get("topic") or "General").strip() or "General",
+            "question": str(item.get("question") or item.get("q") or "").strip(),
+            "answer": str(item.get("answer") or item.get("a") or "").strip(),
+            "difficulty": str(item.get("difficulty") or "").strip(),
+            "tags": item.get("tags") if isinstance(item.get("tags"), list) else [],
+        }
+    return {
+        "id": None,
+        "year": None,
+        "company": "",
+        "category": "General",
+        "question": str(item).strip(),
+        "answer": "",
+        "difficulty": "",
+        "tags": [],
+    }
+
+def _load_company_prep_bank(company: str) -> dict:
+    qa_dir = os.path.join(os.path.dirname(__file__), "QA")
+    filename = COMPANY_QA_FILES.get(company.lower())
+    topics = {}
+
+    if not filename:
+        return topics
+
+    path = os.path.join(qa_dir, filename)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        return topics
+
+    if not isinstance(data, list):
+        return topics
+
+    for item in data:
+        normalised = _normalise_prep_item(item)
+        if not normalised["question"]:
+            continue
+        category = normalised["category"]
+        topics.setdefault(category, []).append(normalised)
+
+    return topics
+
 app = FastAPI(title="MockBee API")
 
 app.add_middleware(
@@ -40,7 +97,7 @@ def signup(req: SignupRequest):
     user = users.find_one({"_id": req.email})
     if user:
         raise HTTPException(status_code=400, detail="Account already exists. Try logging in.")
-    db.upsert_user(req.email, req.name)
+    db.upsert_user(req.email, req.name, role="PUBLIC")
     users.update_one({"_id": req.email}, {"$set": {"password": req.password}})
     return {"status": "success", "message": "Account created"}
 
@@ -52,7 +109,7 @@ ADMIN_PASSWORD = "mockb@urban"
 def login(req: LoginRequest):
     # Admin login check
     if req.email == ADMIN_EMAIL and req.password == ADMIN_PASSWORD:
-        return {"status": "success", "name": "Admin", "email": ADMIN_EMAIL, "is_admin": True}
+        return {"status": "success", "name": "Admin", "email": ADMIN_EMAIL, "is_admin": True, "role": "ADMIN"}
 
     users = db._col("users")
     user = users.find_one({
@@ -65,7 +122,7 @@ def login(req: LoginRequest):
         raise HTTPException(status_code=400, detail="No account found with this email or username.")
     if user.get("password") != req.password:
         raise HTTPException(status_code=400, detail="Incorrect password.")
-    return {"status": "success", "name": user.get("name"), "email": user.get("_id"), "is_admin": False}
+    return {"status": "success", "name": user.get("name"), "email": user.get("_id"), "is_admin": False, "role": user.get("role", "PUBLIC")}
 
 class ChatRequest(BaseModel):
     role: str
@@ -171,6 +228,27 @@ def get_user_history(email: str):
     docs = list(db._col("interview_sessions").find({"user_email": email}, {"_id": 0}).sort("saved_at", -1))
     return {"status": "success", "history": docs}
 
+@app.get("/api/company-prep/questions")
+def get_company_prep_questions(company: str = "Google", topic: Optional[str] = None):
+    if company.lower() not in COMPANY_PREP_COMPANIES:
+        raise HTTPException(status_code=404, detail="Company prep is available for Google, Amazon, and Meta.")
+
+    topics = _load_company_prep_bank(company)
+    if topic:
+        matched_key = next((key for key in topics if key.lower() == topic.lower()), None)
+        if not matched_key:
+            raise HTTPException(status_code=404, detail="No questions found for this topic.")
+        topics = {matched_key: topics[matched_key]}
+
+    total_questions = sum(len(items) for items in topics.values())
+    return {
+        "status": "success",
+        "company": company,
+        "topics": topics,
+        "topic_count": len(topics),
+        "question_count": total_questions,
+    }
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  ADMIN ENDPOINTS
 # ══════════════════════════════════════════════════════════════════════════════
@@ -185,12 +263,39 @@ def admin_get_all_users(key: str):
         u["email"] = u.pop("_id")
     return {"status": "success", "users": users}
 
+class AdminCreateUserRequest(BaseModel):
+    name: str
+    email: str
+    password: str
+    key: str
+
+@app.post("/api/admin/users")
+def admin_create_user(req: AdminCreateUserRequest):
+    """Creates a new admin-managed user (Student) that has free access."""
+    if req.key != ADMIN_PASSWORD:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    users = db._col("users")
+    if users.find_one({"_id": req.email}):
+        raise HTTPException(status_code=400, detail="User already exists")
+    db.upsert_user(req.email, req.name, role="PREMIUM", created_by="admin")
+    users.update_one({"_id": req.email}, {"$set": {"password": req.password}})
+    return {"status": "success", "message": "Student created successfully"}
+
 @app.get("/api/admin/sessions")
 def admin_get_all_sessions(key: str):
     """Returns all interview sessions across all users. Requires admin key."""
     if key != ADMIN_PASSWORD:
         raise HTTPException(status_code=403, detail="Unauthorized")
     docs = list(db._col("interview_sessions").find({}, {"_id": 0}).sort("saved_at", -1))
+
+    users_dict = {u["_id"]: u for u in db._col("users").find({})}
+    for d in docs:
+        user_email = d.get("user_email")
+        if user_email in users_dict:
+            d["user_role"] = users_dict[user_email].get("role", "PUBLIC")
+        else:
+            d["user_role"] = "PUBLIC"
+
     return {"status": "success", "sessions": docs}
 
 @app.delete("/api/admin/users/{email}")

@@ -319,3 +319,5 @@ const COMPANY_DATA = {
     "Amazon": JSON.parse(JSON.stringify(GOOGLE_BASE)),
     "Meta": JSON.parse(JSON.stringify(GOOGLE_BASE))
 };
+
+window.COMPANY_DATA = COMPANY_DATA;

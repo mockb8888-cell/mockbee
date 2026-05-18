@@ -42,57 +42,61 @@
 </head>
 <body>
     <a href="company-prep.html" class="back-btn"><i class="fas fa-arrow-left"></i> Back to Companies</a>
-    <h2 id="company-name">Google Practice</h2>
-    <p id="mode-desc">Select a topic to begin your preparation.</p>
+    <h2 id="company-name">Google Questions</h2>
+    <p id="mode-desc">Select a topic to view previous interview questions.</p>
     
     <div class="topics-grid" id="topics-render">
         <!-- Dynamically rendered roles -->
     </div>
 
+    <script src="js/config.js"></script>
     <script>
         const urlParams = new URLSearchParams(window.location.search);
         const company = urlParams.get('company') || "Google";
-        const mode = urlParams.get('mode') || "practice";
 
-        document.getElementById('company-name').innerText = `${company} ${mode.charAt(0).toUpperCase() + mode.slice(1)}`;
-        document.getElementById('mode-desc').innerText = mode === 'view' ? "Select a topic to view previous year questions and answers." : "Select a topic to start an AI-powered practice session.";
-
-        // List of professional roles to show (excluding kids/communication)
-        const PROFESSIONAL_ROLES = [
-            { name: "Python Developer", icon: "fab fa-python" },
-            { name: "Frontend Developer", icon: "fas fa-code" },
-            { name: "Backend Developer", icon: "fas fa-server" },
-            { name: "ML Engineer", icon: "fas fa-brain" },
-            { name: "Data Scientist", icon: "fas fa-chart-pie" },
-            { name: "Cloud Engineer", icon: "fas fa-cloud" },
-            { name: "DevOps Engineer", icon: "fas fa-infinity" },
-            { name: "Cybersecurity Analyst", icon: "fas fa-user-shield" },
-            { name: "Network Engineer", icon: "fas fa-network-wired" },
-            { name: "System Architect", icon: "fas fa-sitemap" },
-            { name: "QA Engineer", icon: "fas fa-vial" },
-            { name: "Mobile Developer", icon: "fas fa-mobile-screen-button" },
-            { name: "Testing", icon: "fas fa-vial-circle-check" },
-            { name: "AWS Specialist", icon: "fab fa-aws" }
-        ];
+        document.getElementById('company-name').innerText = `${company} Questions`;
 
         const container = document.getElementById('topics-render');
-        PROFESSIONAL_ROLES.forEach(role => {
+        const topicIcon = (topic) => {
+            const key = topic.toLowerCase();
+            if (key.includes('java')) return 'fab fa-java';
+            if (key.includes('react')) return 'fab fa-react';
+            if (key.includes('angular')) return 'fab fa-angular';
+            if (key.includes('data')) return 'fas fa-chart-pie';
+            if (key.includes('sql')) return 'fas fa-database';
+            if (key.includes('selenium') || key.includes('test')) return 'fas fa-vial';
+            if (key.includes('api')) return 'fas fa-plug';
+            return 'fas fa-book-open';
+        };
+
+        fetch(`${API_BASE}/api/company-prep/questions?company=${encodeURIComponent(company)}`)
+            .then(res => res.json())
+            .then(data => {
+                const topics = data.topics || {};
+                container.innerHTML = '';
+                Object.entries(topics).forEach(([topic, questions]) => renderTopic(topic, questions.length));
+                if (Object.keys(topics).length === 0) {
+                    container.innerHTML = '<p>No question topics are available yet.</p>';
+                }
+            })
+            .catch(() => {
+                container.innerHTML = '<p>Could not load topics. Please start the backend server and try again.</p>';
+            });
+
+        function renderTopic(topic, count) {
             const card = document.createElement('div');
             card.className = 'topic-card';
-            card.onclick = () => navigateToTopic(role.name);
+            card.onclick = () => navigateToTopic(topic);
             card.innerHTML = `
-                <i class="${role.icon}"></i>
-                <h4>${role.name}</h4>
+                <i class="${topicIcon(topic)}"></i>
+                <h4>${topic}</h4>
+                <span class="badge">${count} questions</span>
             `;
             container.appendChild(card);
-        });
+        }
 
         function navigateToTopic(topic) {
-            if (mode === 'practice') {
-                window.location.href = `google-interview.html?company=${company}&topic=${encodeURIComponent(topic)}`;
-            } else {
-                window.location.href = `google-questions.html?company=${company}&topic=${encodeURIComponent(topic)}`;
-            }
+            window.location.href = `google-questions.html?company=${company}&topic=${encodeURIComponent(topic)}`;
         }
     </script>
 </body>
