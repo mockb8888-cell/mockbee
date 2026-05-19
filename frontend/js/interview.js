@@ -759,7 +759,7 @@ function showResultsButton() {
         e.preventDefault();
 
         const sessionData = {
-            id: Date.now(),
+            id: String(Date.now()),
             role: roleName,
             transcript: interviewTranscript,
             conversationHistory: conversationHistory,
@@ -775,7 +775,34 @@ function showResultsButton() {
         let history = JSON.parse(localStorage.getItem('mockbee_interviews') || '[]');
         history.push(sessionData);
         localStorage.setItem('mockbee_interviews', JSON.stringify(history));
+        saveSessionDraft(sessionData);
 
-        window.location.href = 'performance.html';
+        window.location.href = 'performance.html?view=report';
     });
+}
+
+function saveSessionDraft(sessionData) {
+    const userEmail = localStorage.getItem('mockbee_user_email');
+    if (!userEmail || typeof API_BASE === 'undefined') return;
+
+    fetch(`${API_BASE}/api/interview/save`, {
+        method: 'POST',
+        keepalive: true,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            email: userEmail,
+            role: sessionData.role,
+            date: sessionData.date,
+            score: sessionData.analysis ? sessionData.analysis.overall : null,
+            analysis: sessionData.analysis || {},
+            transcript: sessionData.transcript || [],
+            conversationHistory: sessionData.conversationHistory || [],
+            totalQuestions: sessionData.totalQuestions || 0,
+            mode: sessionData.mode || 'standard',
+            session_id: sessionData.id,
+            isQuick: sessionData.isQuick,
+            isPro: sessionData.isPro,
+            topic: sessionData.topic || sessionData.role
+        })
+    }).catch(err => console.error("Session draft save failed:", err));
 }

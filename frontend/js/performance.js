@@ -5,6 +5,57 @@
 let currentSlide = 0;
 let totalSlides = 0;
 
+const QUICK_INTERVIEW_MODES = ['1-q', '5-min', 'rapid', 'warmup'];
+
+window.normalizeInterviewSession = function (session) {
+    if (!session) return session;
+
+    const normalized = { ...session };
+    const mode = normalized.mode || 'standard';
+    const isQuickMode = QUICK_INTERVIEW_MODES.includes(mode);
+
+    if (normalized.isQuick === undefined) normalized.isQuick = isQuickMode;
+    if (normalized.isPro === undefined) normalized.isPro = !normalized.isQuick;
+    if (!normalized.analysis && normalized.score) {
+        normalized.analysis = { overall: normalized.score, feedback: normalized.summary || "Report saved for this interview session." };
+    }
+    if (!normalized.transcript) normalized.transcript = [];
+    if (!normalized.date && normalized.saved_at) normalized.date = new Date(normalized.saved_at).toLocaleDateString();
+    if (!normalized.date && normalized.started_at) normalized.date = new Date(normalized.started_at).toLocaleDateString();
+    if (!normalized.id && normalized._id) normalized.id = normalized._id;
+    if (normalized.id !== undefined && normalized.id !== null) normalized.id = String(normalized.id);
+
+    return normalized;
+};
+
+window.syncInterviewHistoryFromDB = async function () {
+    const userEmail = localStorage.getItem('mockbee_user_email');
+    if (!userEmail || typeof API_BASE === 'undefined') {
+        return JSON.parse(localStorage.getItem('mockbee_interviews') || '[]').map(window.normalizeInterviewSession);
+    }
+
+    try {
+        const res = await fetch(`${API_BASE}/api/interview/history?email=${encodeURIComponent(userEmail)}`);
+        const data = await res.json();
+        if (data.status === 'success' && Array.isArray(data.history)) {
+            const localHistory = JSON.parse(localStorage.getItem('mockbee_interviews') || '[]').map(window.normalizeInterviewSession);
+            const mergedById = new Map();
+            localHistory.forEach(session => mergedById.set(String(session.id || `${session.role}-${session.date}-${session.mode}-${session.saved_at || session.started_at || ''}`), session));
+            data.history.slice().reverse().map(window.normalizeInterviewSession).forEach(session => {
+                const key = String(session.id || `${session.role}-${session.date}-${session.mode}-${session.saved_at || session.started_at || ''}`);
+                mergedById.set(key, { ...(mergedById.get(key) || {}), ...session });
+            });
+            const merged = Array.from(mergedById.values());
+            localStorage.setItem('mockbee_interviews', JSON.stringify(merged));
+            return merged;
+        }
+    } catch (err) {
+        console.error("Could not sync interview history:", err);
+    }
+
+    return JSON.parse(localStorage.getItem('mockbee_interviews') || '[]').map(window.normalizeInterviewSession);
+};
+
 document.addEventListener('DOMContentLoaded', () => {
     // 1. Check for recentInterview
     const savedSession = localStorage.getItem('recentInterview');
@@ -78,7 +129,11 @@ window.populateReport = function (sessionData) {
     }
 
     // 4. Determine if we should evaluate or load cached analysis
-    if (sessionData.analysis) {
+    const hasSavedAnalysis = sessionData.analysis
+        && Object.keys(sessionData.analysis).length > 0
+        && sessionData.analysis.overall !== undefined;
+
+    if (hasSavedAnalysis) {
         // INSTANT LOAD FOR SAVED SESSIONS
         updateScores(sessionData.analysis, transcript);
         
@@ -157,8 +212,12 @@ window.populateReport = function (sessionData) {
                 let recentItem = JSON.parse(localStorage.getItem('recentInterview') || '{}');
                 
                 // Try strictly matching by unique id if available, fallback to date & role
-                let idx = sessionData.id ? histories.findIndex(s => s.id === sessionData.id) 
+                let idx = sessionData.id ? histories.findIndex(s => String(s.id) === String(sessionData.id)) 
                                          : histories.findIndex(s => s.role === sessionData.role && s.date === sessionData.date);
+                if (idx === -1) {
+                    histories.push({ ...sessionData, id: sessionData.id ? String(sessionData.id) : String(Date.now()) });
+                    idx = histories.length - 1;
+                }
                 if (idx !== -1) {
                     histories[idx].analysis = analysis;
                     localStorage.setItem('mockbee_interviews', JSON.stringify(histories));
@@ -176,13 +235,18 @@ window.populateReport = function (sessionData) {
                                 score: analysis.overall,
                                 analysis: analysis,
                                 transcript: transcript,
+                                conversationHistory: histories[idx].conversationHistory || sessionData.conversationHistory || [],
+                                totalQuestions: histories[idx].totalQuestions || sessionData.totalQuestions || (transcript ? transcript.length : 0),
                                 mode: histories[idx].mode || 'standard',
-                                session_id: histories[idx].id
+                                session_id: histories[idx].id,
+                                isQuick: histories[idx].isQuick,
+                                isPro: histories[idx].isPro,
+                                topic: histories[idx].topic || histories[idx].role
                             })
                         }).catch(e => console.error("DB Save Error:", e));
                     }
                 }
-                if (recentItem && (recentItem.id === sessionData.id || (recentItem.role === sessionData.role && recentItem.date === sessionData.date))) {
+                if (recentItem && (String(recentItem.id) === String(sessionData.id) || (recentItem.role === sessionData.role && recentItem.date === sessionData.date))) {
                     recentItem.analysis = analysis;
                     localStorage.setItem('recentInterview', JSON.stringify(recentItem));
                 }
@@ -203,7 +267,11 @@ window.populateReport = function (sessionData) {
             const analysis = analyzePerformance(transcript, role);
             
             let histories = JSON.parse(localStorage.getItem('mockbee_interviews') || '[]');
-            let idx = sessionData.id ? histories.findIndex(s => s.id === sessionData.id) : histories.findIndex(s => s.role === sessionData.role && s.date === sessionData.date);
+            let idx = sessionData.id ? histories.findIndex(s => String(s.id) === String(sessionData.id)) : histories.findIndex(s => s.role === sessionData.role && s.date === sessionData.date);
+            if (idx === -1) {
+                histories.push({ ...sessionData, id: sessionData.id ? String(sessionData.id) : String(Date.now()) });
+                idx = histories.length - 1;
+            }
             if (idx !== -1) {
                 histories[idx].analysis = analysis;
                 localStorage.setItem('mockbee_interviews', JSON.stringify(histories));
@@ -221,8 +289,13 @@ window.populateReport = function (sessionData) {
                             score: analysis.overall,
                             analysis: analysis,
                             transcript: transcript,
+                            conversationHistory: histories[idx].conversationHistory || sessionData.conversationHistory || [],
+                            totalQuestions: histories[idx].totalQuestions || sessionData.totalQuestions || (transcript ? transcript.length : 0),
                             mode: histories[idx].mode || 'standard',
-                            session_id: histories[idx].id
+                            session_id: histories[idx].id,
+                            isQuick: histories[idx].isQuick,
+                            isPro: histories[idx].isPro,
+                            topic: histories[idx].topic || histories[idx].role
                         })
                     }).catch(e => console.error("DB Save Error:", e));
                 }

@@ -1,6 +1,28 @@
 /* --- MockBee Dashboard Logic --- */
 
 document.addEventListener('DOMContentLoaded', () => {
+    const QUICK_INTERVIEW_MODES = ['1-q', '5-min', 'rapid', 'warmup'];
+
+    function normalizeInterviewSession(session) {
+        if (!session) return session;
+        const normalized = { ...session };
+        const mode = normalized.mode || 'standard';
+        const isQuickMode = QUICK_INTERVIEW_MODES.includes(mode);
+
+        if (normalized.isQuick === undefined) normalized.isQuick = isQuickMode;
+        if (normalized.isPro === undefined) normalized.isPro = !normalized.isQuick;
+        if (!normalized.analysis && normalized.score) {
+            normalized.analysis = { overall: normalized.score, feedback: normalized.summary || "Report saved for this interview session." };
+        }
+        if (!normalized.transcript) normalized.transcript = [];
+        if (!normalized.date && normalized.saved_at) normalized.date = new Date(normalized.saved_at).toLocaleDateString();
+        if (!normalized.date && normalized.started_at) normalized.date = new Date(normalized.started_at).toLocaleDateString();
+        if (!normalized.id && normalized._id) normalized.id = normalized._id;
+        if (normalized.id !== undefined && normalized.id !== null) normalized.id = String(normalized.id);
+
+        return normalized;
+    }
+
     // 1. Dynamic User Name & Date
     const userNameElement = document.getElementById('dynamic-user-name');
     const sideUserNameElement = document.getElementById('side-user-name');
@@ -431,7 +453,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 10. Update Stats (Interviews & Achievements)
     function updateDashboardStats() {
-        const interviews = JSON.parse(localStorage.getItem('mockbee_interviews') || '[]');
+        const interviews = JSON.parse(localStorage.getItem('mockbee_interviews') || '[]').map(normalizeInterviewSession);
         const activities = JSON.parse(localStorage.getItem('mockbee_activities') || '[]');
         const isSubscribed = localStorage.getItem('mockbee_subscribed') === 'true';
 
@@ -507,20 +529,14 @@ document.addEventListener('DOMContentLoaded', () => {
         .then(res => res.json())
         .then(data => {
             if (data.status === 'success' && data.history && data.history.length > 0) {
-                // Reverse to guarantee oldest first (chronological array order), and inject missing frontend view flags
-                const chronological = data.history.reverse().map(session => {
-                    if (session.isPro === undefined && session.isQuick === undefined) {
-                        const m = session.mode;
-                        if (m === '1-q' || m === '5-min' || m === 'rapid' || m === 'warmup') {
-                            session.isQuick = true;
-                            session.isPro = false;
-                        } else {
-                            session.isPro = true;
-                            session.isQuick = false;
-                        }
-                    }
-                    return session;
+                const localHistory = JSON.parse(localStorage.getItem('mockbee_interviews') || '[]').map(normalizeInterviewSession);
+                const mergedById = new Map();
+                localHistory.forEach(session => mergedById.set(String(session.id || `${session.role}-${session.date}-${session.mode}-${session.saved_at || session.started_at || ''}`), session));
+                data.history.reverse().map(normalizeInterviewSession).forEach(session => {
+                    const key = String(session.id || `${session.role}-${session.date}-${session.mode}-${session.saved_at || session.started_at || ''}`);
+                    mergedById.set(key, { ...(mergedById.get(key) || {}), ...session });
                 });
+                const chronological = Array.from(mergedById.values());
                 localStorage.setItem('mockbee_interviews', JSON.stringify(chronological));
                 // Redraw stats dynamically after fetching DB!
                 updateDashboardStats();

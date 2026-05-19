@@ -333,7 +333,7 @@
                     // Use ID if available, otherwise fallback to role/date
                     let session;
                     if (id) {
-                        session = historyList.find(s => s.id === id);
+                        session = historyList.find(s => String(s.id) === String(id));
                     } else {
                         session = (recent && recent.role === role) ? recent : historyList.find(s => s.role === role && s.date === date);
                     }
@@ -363,11 +363,15 @@
             }
             // Find the session data if it's dynamic
             const history = JSON.parse(localStorage.getItem('mockbee_interviews') || '[]');
+            const recent = JSON.parse(localStorage.getItem('recentInterview') || '{}');
             let session;
             if (id) {
-                session = history.find(s => s.id === id);
+                session = history.find(s => String(s.id) === String(id));
             } else {
                 session = history.find(s => s.role === role && s.date === date);
+            }
+            if (!session && recent && (String(recent.id) === String(id) || (recent.role === role && recent.date === date))) {
+                session = recent;
             }
 
             if (session && window.populateReport) {
@@ -440,12 +444,16 @@
         }
 
         // Dynamic History Loading
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             const urlParams = new URLSearchParams(window.location.search);
             const viewParam = urlParams.get('view');
             const historyGrid = document.querySelector('.history-grid');
-            const history = JSON.parse(localStorage.getItem('mockbee_interviews') || '[]');
-            const recent = JSON.parse(localStorage.getItem('recentInterview'));
+            let history = window.syncInterviewHistoryFromDB
+                ? await window.syncInterviewHistoryFromDB()
+                : JSON.parse(localStorage.getItem('mockbee_interviews') || '[]');
+            history = history.map(session => window.normalizeInterviewSession ? window.normalizeInterviewSession(session) : session);
+            const recentRaw = JSON.parse(localStorage.getItem('recentInterview'));
+            const recent = window.normalizeInterviewSession ? window.normalizeInterviewSession(recentRaw) : recentRaw;
 
             // Auto-open report ONLY if specifically requested via URL (e.g. after finishing an interview)
             if (viewParam === 'report') {
@@ -474,15 +482,14 @@
                 const filterParam = urlParams.get('filter');
                 const proHistory = history.filter(session => {
                     if (filterParam === 'quick') return session.isQuick;
-                    return session.isPro;
+                    return session.isPro || filterParam !== 'quick';
                 });
 
                 // Unique Filter: Prevent duplicates from appearing in UI
                 const uniqueHistory = [];
                 const seen = new Set();
                 proHistory.forEach(session => {
-                    // Use role and date as the unique identifier to catch duplicates even if IDs differ
-                    const identifier = `${session.role}-${session.date}`.toLowerCase().trim();
+                    const identifier = (session.id || `${session.role}-${session.date}-${session.mode}-${session.saved_at || session.started_at || ''}`).toString().toLowerCase().trim();
                     if (!seen.has(identifier)) {
                         seen.add(identifier);
                         uniqueHistory.push(session);
@@ -534,7 +541,10 @@
                         // Safely pull score if it's evaluated
                         const scoreDisplay = session.analysis && session.analysis.overall 
                                 ? `<span style="font-weight: 900; color: #1a1a1a; padding: 4px 10px; background: #E9E4E2; border-radius: 20px; font-size: 0.75rem;">SCORE: ${session.analysis.overall}%</span>` 
-                                : `<div class="history-score-mini">Review Complete</div>`;
+                                : `<div class="history-score-mini">Ready for Analysis</div>`;
+                        const feedbackSummary = session.analysis && session.analysis.feedback
+                                ? `<p style="font-size: 0.78rem; color: var(--text-medium); margin: 8px 0; line-height: 1.4;">${session.analysis.feedback}</p>`
+                                : `<p style="font-size: 0.78rem; color: var(--text-medium); margin: 8px 0; line-height: 1.4;">Open this session to generate your AI feedback summary.</p>`;
 
                         const card = document.createElement('div');
                         card.className = 'history-card pro-history-card'; // Added class for easier styling
@@ -547,6 +557,7 @@
                                 <h3 style="margin-bottom: 2px;">${session.role}</h3>
                                 ${session.topic ? `<p style="font-size: 0.65rem; color: var(--gold-dark); font-weight: 800; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">${session.topic}</p>` : ''}
                                 <p style="font-size: 0.75rem; opacity: 0.7; margin-bottom: 8px;">Session Date: ${session.date}</p>
+                                ${feedbackSummary}
                                 ${scoreDisplay}
                             </div>
                             <button class="btn-open-report">Open Report <i class="fas fa-chevron-right"></i></button>

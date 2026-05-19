@@ -193,23 +193,36 @@ class SaveSessionRequest(BaseModel):
     email: str
     role: str
     date: str
-    score: int
-    analysis: dict
-    transcript: list 
+    score: Optional[int] = None
+    analysis: Optional[dict] = None
+    transcript: list
+    conversationHistory: Optional[list] = None
+    totalQuestions: Optional[int] = None
     mode: Optional[str] = "standard"
     session_id: Optional[str] = None
+    isQuick: Optional[bool] = None
+    isPro: Optional[bool] = None
+    topic: Optional[str] = None
 
 @app.post("/api/interview/save")
 def save_interview(req: SaveSessionRequest):
     col = db._col("interview_sessions")
+    quick_modes = {"1-q", "5-min", "rapid", "warmup"}
+    is_quick = req.isQuick if req.isQuick is not None else req.mode in quick_modes
+    is_pro = req.isPro if req.isPro is not None else not is_quick
     doc = {
         "user_email": req.email,
         "role": req.role,
         "mode": req.mode,
         "date": req.date,
         "score": req.score,
-        "analysis": req.analysis,
+        "analysis": req.analysis or {},
         "transcript": req.transcript,
+        "conversationHistory": req.conversationHistory or [],
+        "totalQuestions": req.totalQuestions,
+        "isQuick": is_quick,
+        "isPro": is_pro,
+        "topic": req.topic,
         "saved_at": db._now(),
         # Use frontend session ID if provided, otherwise it gets mongo _id
         "id": req.session_id if req.session_id else str(db._now())
